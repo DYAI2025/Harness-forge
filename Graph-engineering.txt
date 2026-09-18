@@ -1,0 +1,929 @@
+raph-of-Skills Dependency Propagation — Deep Dive
+Source: Liu et al., Graph-of-Skills: Dependency-Aware Structural Retrieval for Massive Agent Skills (arXiv:2604.05333v4, EMNLP 2026). Code: github.com/davidliuk/graph-of-skills.
+
+1. The Problem Dependency Propagation Solves
+Flat semantic retrieval finds skills that look related to the query. It often fails to find skills that are functionally required to run the top match:
+
+Top semantic hit: a high-level “solver” or report generator
+Missing: parser, converter, auth setup, preprocessor, schema loader
+
+That gap is the prerequisite gap. Loading the full library closes it only by drowning the agent in tokens. Graph-of-Skills (GoS) closes it by propagating relevance along dependency structure, especially backwards from a matched skill to its upstream prerequisites.
+
+2. Offline Substrate: Typed Skill Graph
+GoS first converts a local skill corpus $\mathcal{C}$ into a typed directed graph:
+$$G = (V, E, w, \phi)$$
+
+Nodes $V$: normalized skill records (name, capability summary, I/O fields, tags, entrypoints, source path).
+Edge types $\mathcal{R}$:
+$\mathrm{dep}$ — executable prerequisites (primary)
+$\mathrm{wf}$ — workflow / pipeline steps
+$\mathrm{sem}$ — near-duplicate or topical adjacency
+$\mathrm{alt}$ — interchangeable alternatives
+
+
+How dependency edges are induced
+
+Deterministic I/O overlap:Edge $v_i \rightarrow v_j$ if the outputs of $v_i$ are compatible with the inputs of $v_j$ above a fixed schema threshold (no LLM). Direction means: $v_i$ can supply an artifact that $v_j$ consumes.
+Sparse LLM validation:For each node, form a small candidate pool (lexical + semantic + I/O expansion, top-$k$ default 8). Batch-validate only those candidates. Construction cost is $\mathcal{O}(Nk)$, not $\mathcal{O}(N^2)$.
+
+So the graph encodes executable structure, not merely topical similarity.
+
+3. Online Retrieval Pipeline (Three Stages)
+textKopierenKopiertQuery q
+   │
+   ▼
+┌─────────────────────────────────┐
+│ 1. Hybrid seeding               │  semantic + lexical → seed distribution p
+└───────────────┬─────────────────┘
+                │
+                ▼
+┌─────────────────────────────────┐
+│ 2. Reverse-aware PPR diffusion  │  spread score over typed graph
+└───────────────┬─────────────────┘
+                │
+                ▼
+┌─────────────────────────────────┐
+│ 3. Budgeted rerank + hydration  │  compact executable bundle B(q)
+└─────────────────────────────────┘
+Stage 1 — Hybrid seeding
+Dense retrieval is strong on the visible top-level skill; lexical retrieval is strong on filenames/artifacts. GoS merges them:
+$$z_i(q) = \eta\, s_i^{\mathrm{sem}}(q) + (1-\eta)\, s_i^{\mathrm{lex}}(q)$$
+$$\mathbf{p}_i = \frac{z_i(q)}{\sum_j z_j(q)}$$
+$\mathbf{p}$ is the personalization / restart distribution for PageRank: probability mass starts on skills that already match the query.
+Stage 2 — Reverse-aware typed diffusion (the core)
+For each relation type $r$, define:
+
+Forward transition $T_r^{\rightarrow}$ from adjacency $A_r$ (row-normalized)
+Reverse transition $T_r^{\leftarrow}$ from $A_r^\top$ (row-normalized)
+
+Unified transition operator:
+$$T = \operatorname{RowNorm}\!\left(
+  \sum_{r \in \mathcal{R}}
+  \lambda_r \bigl( T_r^{\rightarrow} + \gamma_r\, T_r^{\leftarrow} \bigr)
+\right)$$
+
+$\lambda_r$: relative weight of relation type ($\sum \lambda_r = 1$)
+$\gamma_r$: how strongly reverse traversal is allowed for type $r$(dependency edges typically get high $\gamma_{\mathrm{dep}}$)
+
+Personalized PageRank iteration:
+$$\mathbf{s}^{(\ell+1)} = \alpha\,\mathbf{p} + (1-\alpha)\, T^\top \mathbf{s}^{(\ell)}$$
+
+$\alpha \in (0,1)$: restart probability (teleport back to seeds)
+At convergence, $\mathbf{s}^\star$ scores every skill by a mixture of:
+direct query relevance (via $\mathbf{p}$)
+multi-hop structural importance under reverse-biased walks
+
+
+Why “reverse” matters conceptually
+Suppose the seed is a high-level ReportGenerator that depends on CSVParser and AuthSetup:
+textKopierenKopiertAuthSetup ──dep──► CSVParser ──dep──► ReportGenerator  (seed)
+
+Forward walks from the seed go downstream (consumers of the report) — often useless.
+Reverse walks go upstream along dependency edges and raise the score of CSVParser and AuthSetup even if they are weak semantic matches to the user query.
+
+That is the mechanism that closes the prerequisite gap.
+Stage 3 — Budgeted reranking and hydration
+Diffusion score is mixed with direct field matches:
+$$\rho_i(q) = \mathbf{s}_i^\star + \mu\, m_i(q)$$
+Skills are hydrated (materialized as agent-consumable payloads: path, capability text, execution notes) in descending $\rho$ order under:
+
+per-skill character/token cap
+global context budget $\tau$
+
+The formal target approximated by this pipeline is the budgeted selection problem:
+$$\max_{B \subseteq V}
+\sum_{v \in B} \mathrm{rel}(v,q)
++ \beta \sum_{(u,v) \in E_{\mathrm{dep}}} \mathbb{I}[u \in B \land v \in B]
+\quad \text{s.t.}\quad \mathrm{cost}(B) \le \tau$$
+Relevance + dependency completeness under a hard prompt budget (quadratic knapsack → approximated by seed → reverse PPR → budgeted hydrate).
+
+4. Ablation Evidence: Direction > Graph Itself
+On full SkillsBench, GPT-5.2 Codex, 1,000-skill library:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+VariantReward ↑TokensStepsFull GoS (reverse-aware PPR)34.41.38M715.6Forward-only PPR ($\gamma_r = 0$)25.31.20M742.7No graph propagation29.30.89M766.2
+Key result: Forward-only is worse than removing the graph (−9.1 reward vs −5.1). The gain is not “graph diffusion” in general; it is specifically backwards dependency traversal.
+Budget-matched retrieval study (same seeds, rerank, hydration, context budget):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+OperationDependency-pair co-recovery $D$Reverse-aware PPR (GoS)0.654Forward-only PPR0.362No-graph / one-hop matched0.481
+Reverse recovery nearly doubles dependency-pair co-recovery relative to forward-only.
+
+5. End-to-End Performance Context
+Across SkillsBench and ALFWorld, three model families (Claude Sonnet 4.5, MiniMax M2.7, GPT-5.2 Codex):
+
+GoS achieves the highest average reward in all six model–benchmark blocks.
+SkillsBench + GPT-5.2 Codex: +7.0 absolute reward vs full library loading (+25.6% relative), −56.7% total tokens.
+Library-size sweep (200 → 2,000 skills): advantage emerges once the library exceeds a few hundred skills — the regime where full loading becomes toxic and flat retrieval starts missing prerequisites.
+
+Typical retrieval interface in experiments: at most $N=8$ hydrated skills, 2,400-character per-skill cap, 12,000-character global cap (shared with the Vector Skills baseline so embedding quality is not a confound).
+
+6. Relation to Other Routing Systems
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+SystemHow dependencies enterPropagation styleSkillRouterNot modeledFlat body-aware retrieve-and-rerankSkillWeaverPost-hoc DAG after independent retrievalNo graph diffusion; LLM plan + compatibility scoreGraph-of-SkillsOffline typed edges; reverse PPR at inferenceContinuous multi-hop score diffusionSkillDAGTyped graph exposed as agent-callable toolsAgent-driven search / propose-edge (evolving)CaSKGCounterfactual-causal calibration of edgesCausal graph + retrieval
+GoS is the cleanest empirical demonstration that direction of walk on a skill dependency graph is a first-order design choice: reverse bias recovers executable prerequisites; forward bias can actively hurt.
+
+7. Practical Implications for a Harness
+
+Build a dependency graph offline from I/O schemas (deterministic) plus sparse validation; do not rely on metadata similarity alone for edges.
+Seed with hybrid signals, then bias transition weights toward reverse dependency edges when running PPR (or any diffusion).
+Treat forward-only graph expansion as a harmful default — ablations show it underperforms even “no graph.”
+Hydrate under a hard budget; diffusion ranks candidates, it does not dump the whole neighborhood into context.
+Compose with other routers: e.g., SkillWeaver-style decomposition for multi-step queries, then GoS-style reverse expansion per sub-goal; or SkillRouter body-aware rerank on the final GoS candidate set when skills are highly overlapping.
+
+
+8. Limitations and Open Questions
+
+Graph quality depends on I/O schema coverage; poorly documented skills yield weak or missing $\mathrm{dep}$ edges.
+Fixed offline graph vs skill churn (SkillDAG-style online edge proposal is complementary).
+Hyperparameters $\lambda_r, \gamma_r, \alpha, \eta, \mu$ are important; the paper reports defaults and type-specific reverse weights but production tuning may be domain-specific.
+Evaluation libraries are still in the hundreds-to-low-thousands; behavior at SkillRouter’s ~80K scale with dense near-duplicates is not fully characterized.
+Dependency-pair co-recovery is a strong intermediate metric; full causal claims about “why” reward improves still rest on the reverse vs forward ablation.
+
+
+9. One-Sentence Mechanism Summary
+Graph-of-Skills dependency propagation works by seeding a small query-relevant set, then running Personalized PageRank on a typed skill graph whose transition matrix is deliberately biased toward reverse dependency edges, so that upstream prerequisites of high-level matches accumulate score and enter a budgeted executable bundle even when they are weak semantic matches to the original query.Zum Chat hinzufügen5 sourcesExplore Graph-of-Skills hyperparametersGearbeitet für 7m 37sGraph-of-Skills Hyperparameters — Detailed Exploration
+Defaults below are those held fixed across all reported experiments (benchmarks, model families, library sizes 200–2,000) and shipped in the released code, unless an ablation explicitly changes them. Primary sources: paper Table 7 / relation-weight table (camera-ready) and the public README ablation notes.
+
+1. Full Default Catalog
+A. Personalized PageRank / diffusion
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ParameterDefaultRoleRestart $\alpha$0.2Teleport probability in $\mathbf{s}^{(\ell+1)}=\alpha\mathbf{p}+(1-\alpha)T^\top\mathbf{s}^{(\ell)}$. Fraction of mass that stays near (or returns to) seeds each step.Max iterations50Power-iteration cap.Tolerance$10^{-6}$Stop when $\|\mathbf{s}^{(\ell+1)}-\mathbf{s}^{(\ell)}\| < 10^{-6}$.
+Interpretation of $\alpha=0.2$:
+Relatively aggressive diffusion (80% of mass walks the graph). Lower $\alpha$ → more multi-hop prerequisite recovery; higher $\alpha$ → scores stay closer to pure seed relevance. The paper does not publish a full $\alpha$ sweep; the main ablation is on reverse weights, not restart.
+B. Typed transition weights (forward / reverse)
+These implement $\lambda_r$ and $\gamma_r$ in practice by inserting typed edges with the following relative strengths before row-normalization:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Relation $r$Forward weightReverse weightRationaleDependency1.01.0Strongest in both directions; recovering prerequisites is the main goal of GoS.Workflow0.70.5Moderate backward expansion to adjacent pipeline stages without dominating dep evidence.Semantic0.40.2Weak smoothing across near-neighbors; low reverse weight limits topical drift.Alternative(same pattern; lower reverse)(documented as weaker reverse)Interchangeable strategies; reverse kept small to avoid expanding to unrelated alternatives.
+Critical ablation: setting all reverse weights to 0 ($\gamma_r=0$) drops SkillsBench reward from 34.4 → 25.3 (−9.1), which is worse than removing graph propagation entirely (29.3). Dependency-pair co-recovery falls 0.654 → 0.362.
+So the single most important “hyperparameter group” is: keep reverse dependency weight high; do not zero $\gamma_{\mathrm{dep}}$.
+C. Offline graph construction
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ParameterDefaultRoleI/O overlap threshold $\zeta$0.6Minimum schema-overlap score to add a deterministic dependency edge (no LLM).Validation candidates per node $k$8Top-$k$ candidates (lexical + semantic + I/O) sent to the LLM relation validator. Construction $\mathcal{O}(Nk)$.
+Sensitivity of $\zeta$:
+Sweep 0.4 → 0.8 moves deterministic edge count from 172 → 46 (200-skill setting scale) while changing recall by < 0.005. Authors conclude the threshold is not delicate.
+Documentation quality vs threshold:
+Dropping half of I/O fields costs only 0.024 recall; dropping half of descriptions costs 0.146. Graph quality is limited more by skill documentation than by $\zeta$.
+D. Seeding
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ParameterDefaultRoleSemantic seed pool20Dense-retrieval candidates before merge.Lexical seed pool20Lexical-retrieval candidates before merge.Seed set size5Number of merged seeds carried into PPR ($\mathbf{p}$ support effectively concentrated on top seeds).Semantic–lexical mix $\eta$not listed as a single fixed number in Table 7 extract$z_i=\eta s_i^{\mathrm{sem}}+(1-\eta)s_i^{\mathrm{lex}}$. Ablating lexical + rerank (semantic-only seeding) drops reward 34.4 → 26.7.
+Hybrid seeding is material: pure semantic seeding underperforms the full pipeline by ~7.7 reward points in the main ablation.
+E. Rerank + hydration budgets
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ParameterDefaultRoleRetrieval top-$N$8Max number of hydrated skills returned to the agent.Per-skill char budget2,400Truncation limit per skill payload.Global context char budget12,000Total characters over the hydrated bundle.Rerank mix $\mu$role defined; exact default not in Table 7 extract$\rho_i=\mathbf{s}_i^\star+\mu\,m_i(q)$ — how much direct field match is retained after diffusion.
+These budgets are shared with the Vector Skills baseline so embedding quality is not a confound; only the graph operation differs.
+F. Objective coefficient (formal only)
+
+
+
+
+
+
+
+
+
+
+
+
+
+ParameterRole$\beta$ in Eq. (3)Trades query relevance vs dependency-pair completeness in the idealized quadratic knapsack. The implemented pipeline approximates this via reverse PPR + budgeted hydrate; $\beta$ is not exposed as a runtime knob in the reported defaults.
+
+2. What the Ablations Say About Sensitivity
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ChangeEffectPractical takeaway$\gamma_r=0$ (forward-only)−9.1 reward; $D$: 0.654→0.362Do not disable reverse dependencyNo graph propagation−5.1 rewardGraph helps, but wrong direction hurts moreNo lexical + rerank−7.7 rewardHybrid seed + field grounding matter$\zeta \in [0.4,0.8]$Edge count changes a lot; recall almost flat$\zeta=0.6$ is a safe defaultLibrary size 200→2000GoS leads from ~500 skills onwardHyperparameters held fixed still work across scale
+No full factorial grid on $\alpha$, $\eta$, $\mu$, or per-type $\lambda_r$ is published. The strongest causal claim is about reverse dependency weight, not about fine tuning of restart or mix coefficients.
+
+3. Construction Cost (related operational “hyperparameters”)
+
+Offline indexing: ~$0.29 at 200 skills, ~$2.36 at 2,000 skills (one-time).
+Online propagation: ~1.5 ms p50 — not the bottleneck.
+Embedding model used in experiments: text-embedding-3-large (3072-d), same for Vector Skills baseline.
+
+
+4. Recommended Starting Configuration for a Harness
+If you port GoS into a production skill-routing plane, the evidence-backed starting point is:
+textKopierenKopiert# Diffusion
+alpha                  = 0.2
+ppr_max_iters          = 50
+ppr_tol                = 1e-6
+
+# Transition bias (relative, then row-normalize)
+dep_forward / dep_reverse     = 1.0 / 1.0
+wf_forward  / wf_reverse      = 0.7 / 0.5
+sem_forward / sem_reverse     = 0.4 / 0.2
+# alternatives: keep reverse low
+
+# Graph build
+io_threshold_zeta      = 0.6
+validator_topk_k       = 8
+
+# Seeding
+semantic_pool          = 20
+lexical_pool           = 20
+seed_set_size          = 5
+# keep hybrid seeding (do not drop lexical)
+
+# Hydration
+top_N                  = 8
+per_skill_chars        = 2400
+global_chars           = 12000
+Tune first if needed: reverse dependency strength and seed set size / top-$N$ under your context budget.
+Tune later / less critical: $\zeta$, PPR tolerance, exact $\eta$/$\mu$ (unless you observe topical drift or seed collapse).
+Avoid: forward-only diffusion, pure semantic seeding, or very large reverse weights on semantic/alternative edges (invites drift).
+
+5. Mapping to the Formal Equations
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+SymbolDefault / practiceEquation$\alpha$0.2PPR update (7)$\lambda_r, \gamma_r$Implemented via typed forward/reverse weights aboveTransition operator (6)$\eta$Hybrid mix (value not singled out in Table 7)Seeding (4)$\mu$Field-match residual after diffusionRerank (8)$\zeta$0.6Deterministic dep edges$k$8LLM validation fan-out$\tau$12,000 chars global (+ 2,400 per skill)Budget constraint (3)
+
+6. Open Gaps
+
+No published sensitivity curves for $\alpha$, $\eta$, $\mu$, or continuous $\gamma_{\mathrm{dep}}$.
+Relation-type $\lambda_r$ after normalization is implicit in the relative forward weights; exact post-normalization mass per type is not tabulated.
+Whether defaults remain optimal at SkillRouter-scale (~80K highly overlapping skills) is untested in the GoS paper.
+Interaction with body-aware rerankers (SkillRouter) or compositional decomposers (SkillWeaver) is left to integrators.
+
+Bottom line: GoS is intentionally configured with a small, stable hyperparameter set. The only hyperparameter group with strong causal evidence of first-order impact is reverse dependency traversal strength ($\gamma_{\mathrm{dep}}$ high, not zero). Most other knobs are fixed for fairness and robustness; $\zeta$ is notably insensitive, while hybrid seeding and hydration budgets are important engineering constraints rather than delicate continuous tunables.10 sourcesAnalyze Graph-of-Skills ablation studiesGearbeitet für 47sGraph-of-Skills Ablation Studies — Critical Analysis
+The camera-ready paper (EMNLP 2026) and README report four complementary ablation / sensitivity analyses. Together they form one of the stronger mechanism stories in the 2026 skill-routing literature: the gain is attributed to reverse dependency traversal, not to “having a graph” in general.
+
+1. Inventory of Ablation Designs
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+StudyWhat variesWhat is held fixedMetric levelSettingA. Component ablationGraph direction / presence / seedingFull agent loop, 1k libraryEnd-to-end reward, tokens, stepsSkillsBench, GPT-5.2 CodexB. Budget-matched retrievalOnly the graph operatorSeeds, rerank, top-8, char budgets, hydrationOracle recall, completeness, dep-pair co-recovery200 skills, 87 queries, 3 graph buildsC. Library-size sensitivity$N \in \{200,500,1000,2000\}$Same methods & hypersReward, tokens, runtimeSkillsBench, GPT-5.2 CodexD. Construction robustness$\zeta$; missing I/O vs descriptionsRetrieval setupEdge count, recallConstruction diagnostics
+
+2. Study A — Component Ablation (End-to-End)
+Setup: Full SkillsBench, GPT-5.2 Codex, 1,000-skill library.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+VariantWhat was removedR ↑ΔR vs fullT (M)SFull GoS (reverse-aware PPR)—34.401.38715.6Forward-only PPR ($\gamma_r=0$)All reverse transitions25.3−9.11.20742.7w/o graph propagationExpansion beyond seeds29.3−5.10.89766.2w/o lexical + rerankLexical seeds + field rerank26.7−7.71.01747.7
+Causal reading the authors emphasize
+
+Direction > presence of a graphForward-only (−9.1) is worse than no propagation (−5.1). Forward-only lands 4.0 points below the graph-free control. So “add a graph and diffuse” is not automatically helpful; the wrong direction actively hurts under a fixed hydration budget.
+Why forward hurts (mechanistic story)Dependency edges are stored producer → consumer. From a matched high-level skill, forward walks go to downstream consumers; reverse walks go to upstream prerequisites. Under a fixed top-$N$ / character budget, forward mass displaces useful seeds with less useful downstream nodes.
+Seed quality vs expansionRemoving lexical + rerank (−7.7) hurts more than removing propagation (−5.1). Authors’ interpretation: hybrid seeding improves entry points; propagation only pays off if seeds are good. Weak seeds leave little structure worth expanding.
+
+Strength of this study
+
+Directly tied to the claimed product metric (agent reward).
+Clear ordinal ranking of components.
+
+Limitations
+
+Single model (GPT-5.2 Codex) and single library size (1k) for the component table.
+Full agent runs entangle retrieval with the agent’s downstream use of the bundle (planning, tool use, retries). A drop in reward is not pure evidence about retrieval quality alone.
+No statistical significance tests on individual cells (authors state they rely on consistency across blocks instead).
+Only three binary ablations; no continuous $\gamma_{\mathrm{dep}}$ sweep, no $\alpha$ sweep, no per-relation $\gamma_r$ isolation beyond “all reverse = 0.”
+
+
+3. Study B — Budget-Matched Offline Retrieval (Mechanism Isolation)
+Purpose: Remove agent / hydration confounds so only the graph operator changes.
+Controls held fixed across arms
+
+87 SkillsBench queries on the 200-skill library
+5 lexical seeds (no embedding variance)
+Same reranker, top-8, 2,400 / 12,000 char budgets, hydration, source-path format
+Realized context ≈ 12,000 chars for all arms
+Averaged over three graph builds
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Retrieval operation$R_{\mathrm{avail}}$$R_{\mathrm{full}}$Completeness $C$Dep-pair co-recovery $D$Reverse-aware PPR0.5750.5020.4210.654Forward-only PPR0.4900.4280.3110.362No-Graph (matched flat)0.5420.4730.3680.481One-Hop dependency0.5420.4730.3680.481
+Reported bootstrap CIs (reverse − comparator on available recall, 76 tasks with ≥1 oracle skill)
+
+Reverse − forward: +0.085 [+0.044, +0.132]
+Reverse − No-Graph: +0.033 [+0.004, +0.066]
+Reverse − One-Hop: +0.033 [+0.003, +0.065]
+
+What this study adds
+
+Reproduces the end-to-end ordering at pure retrieval level — forward is still worst; reverse still best. That strengthens the claim that the reward drop is not only an agent artifact.
+Recall vs structure diverge
+On skill-level recall, reverse’s edge over flat is small (+0.033).
+On dependency-pair co-recovery, reverse (0.654) far exceeds flat/one-hop (0.481) and forward (0.362).Interpretation: the prerequisite gap is less about “finding more individual skills” and more about retrieving pairs that compose.
+
+One-hop ≈ No-Graph on aggregate metricsAverage degree is only ~1.73; 59/200 nodes are isolated. A single undiffused hop does not recover oracle skills that flat retrieval missed. Weighted multi-hop reverse traversal is what helps, not the mere existence of a dep edge list.
+
+Strength
+
+Best-designed ablation in the paper for mechanism.
+Budget-matched; multi-build; bootstrap CIs.
+
+Limitations
+
+Only on the 200-skill library (not the 1k setting of Study A).
+Lexical-only seeds (by design) — does not re-test hybrid seeding here.
+Oracle definitions depend on which skills are labeled “required”; full definitions live in Appendix E (not fully re-verified here).
+One-Hop and No-Graph match on the four reported metrics but the paper notes they still differ in precision, size, and latency — so equality is on those four scores, not identity of behavior.
+
+
+4. Study C — Library-Size Sensitivity
+Setup: SkillsBench, GPT-5.2 Codex; $N \in \{200, 500, 1000, 2000\}$.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+$N$Vanilla RVector RGoS RVanilla T (M)GoS T (M)20032.521.232.11.851.3650026.020.731.41.931.161,00027.421.534.43.191.382,00026.723.831.35.841.14
+Findings
+
+Regime dependence: At 200 skills, Vanilla is slightly ahead (32.5 vs 32.1). From 500 onward, GoS leads by +5.4 / +7.0 / +4.6 absolute reward.
+Token scaling: Vanilla ~3× tokens from 500→2000; both retrievers stay roughly flat. Scaling burden is prompt size, not retrieval compute.
+Peak margin at 1,000 skills in this sweep; still large at 2,000.
+
+Implication for harness design: Graph-based reverse retrieval is most justified once the library is large enough that full loading is toxic and flat retrieval starts missing prerequisites—not as a default for tiny skill packs.
+Limitations
+
+Single model family for the size sweep.
+Library composition when growing 200→2000 is not fully characterized (whether new skills add dense dep structure or noise).
+No ablation of $\gamma_r$ within each size bin.
+
+
+5. Study D — Construction Robustness
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ProbeResult$\zeta$ sweep 0.4 → 0.8Deterministic edges 172 → 46; recall change < 0.005Drop half of I/O fieldsRecall −0.024Drop half of descriptionsRecall −0.146Offline cost~$0.29 (200) → ~$2.36 (2,000)Online PPR latency~1.5 ms p50
+Interpretation
+
+Edge threshold is robust; graph quality is limited more by skill documentation (especially descriptions used in seeding/validation) than by $\zeta$.
+Construction is cheap relative to agent token spend; online diffusion is negligible.
+
+This is a robustness / sensitivity study rather than a component ablation, but it bounds how fragile the offline substrate is.
+
+6. Qualitative Counterexamples (Important for Interpretation)
+The paper’s trajectory analysis notes asymmetric failure modes:
+
+GoS helps when the required neighborhood exists and is connected (e.g. pedestrian-traffic-counting pipeline recovered cleanly).
+GoS can fail when the graph recovers only a partial stack that Vanilla’s full library still contains (e.g. earthquake-phase-association: Vanilla passed, GoS failed).
+
+So reverse PPR improves average reward by assembling executable neighborhoods more often; it does not dominate on every task. Structural retrieval is only as good as graph coverage of the true prerequisite set.
+
+7. Synthesis: What the Ablations Jointly Support
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ClaimSupported byStrengthReverse dependency traversal is the primary mechanismA + BStrongForward diffusion can be harmful under budgetA + BStrongDependency-pair co-recovery (not just skill recall) is the right intermediate metricBStrongHybrid seeding mattersA (lexical+rerank ablation)Medium–StrongBenefit emerges mainly for larger librariesCMedium–StrongGraph presence alone is insufficient / one-hop is weakBStrongDefaults transfer across modelsMain Table 1 (not pure ablation)Medium (consistency, no formal tests)Continuous $\gamma_{\mathrm{dep}}$ or $\alpha$ optimality—Insufficient
+Most important ranking of marginal contributions (Study A, this setting):
+
+Reverse awareness (largest swing)
+Hybrid lexical seeding + rerank
+Any graph expansion vs seeds-only
+
+
+8. Methodological Critique
+What is done well
+
+Mechanism isolation via budget-matched offline study.
+Explicit forward vs reverse control (not just “with/without graph”).
+Intermediate structural metric $D$ aligned with the prerequisite-gap thesis.
+Library-size sweep shows when the method is worth using.
+Honest qualitative failures.
+
+What remains weak or missing
+
+Component ablation only on one model × one library size.
+No significance tests on end-to-end reward cells.
+No continuous ablations of $\alpha$, $\eta$, $\mu$, or per-type $\gamma_r$ (only all-reverse-off).
+Offline matched study uses lexical-only seeds and 200 skills — not a perfect parallel of the 1k hybrid-seed agent runs.
+Interaction with body-aware rerankers (SkillRouter-style) or multi-step decomposers (SkillWeaver) not ablated.
+Graph build variance is partially controlled (3 builds) in Study B but not fully reported for Study A.
+
+
+9. Practical Takeaways from the Ablations
+
+Never ship forward-only dependency expansion under a tight skill budget.
+Measure dependency-pair co-recovery, not only Hit@k / reward, when tuning graph retrieval.
+Invest in seed quality (hybrid lexical + semantic) before adding more diffusion.
+Prefer GoS-style routing once the library is hundreds+ of skills; for ~200, full loading may still win.
+Prioritize skill documentation quality (descriptions + I/O) over fine-tuning $\zeta$.
+Expect task-level variance: incomplete graphs can make selective retrieval lose to “load everything.”
+
+
+10. Bottom Line
+The Graph-of-Skills ablation package is unusually clear for this field. It supports a precise claim:
+Under a fixed context budget, reverse-aware Personalized PageRank over a dependency-typed skill graph improves executable bundle coherence (and downstream reward) relative to flat retrieval; forward-only diffusion is worse than no graph; one-hop expansion is approximately useless on sparse graphs; and the advantage appears once libraries leave the small-N regime.
+That is a stronger, more falsifiable mechanism story than “graphs help skill routing.” The main residual risks are limited model/size coverage for the component table and the absence of continuous hyperparameter ablations beyond the binary reverse-off switch.

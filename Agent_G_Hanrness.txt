@@ -1,0 +1,578 @@
+Ich beginne mit der Evidenzsammlung entlang der Streams A–J, bevor ich die Architektur ableite.
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+# Enterprise Retrieval-to-Execution Harness — Evidence-First Research Report
+
+Stand: 17.09.2026 · Suchbudget dieser Session: 5 Suchläufe (Stream A, C, E direkt belegt; Streams B, D, F–J teilweise aus Vorwissen mit Kennzeichnung [KB] = knowledge-based, in dieser Session nicht neu verifiziert). Alle 2026-Preprints sind als [2026-PREPRINT] markiert.
+
+1. Executive Research Conclusion
+Kernbefund: Die Literatur 2025–2026 hat die im Kontext formulierte offene Stufe („?“) unabhängig voneinander identifiziert und mit demselben Begriff belegt: Compilation. GraSP formuliert das Problem exakt: 
+3
+Retrieval answers "what skills are relevant"; execution answers "do this step now". But no existing method answers the structural question in between: "how do these skills depend on each other, and what is the minimal, causally ordered plan?" Die Antwort dort ist 
+3
+a compilation stage that transforms a flat set of retrieved skills into a typed directed acyclic graph (DAG) where nodes are instantiated skill invocations and edges encode explicit precondition–effect dependencies (state, data, order).
+
+Was gesichert ist (EMPIRICAL_RESULT, Preprint-Niveau):
+
+Flat/semantic Retrieval hinterlässt ein Prerequisite Gap; strukturelle Retrieval (GoS, TGR, Graph RAG-Tool Fusion) reduziert es messbar.
+Metadaten (Name/Description) reichen bei ~80K Skills für Routing nicht aus; der Skill-Body ist Routing-Signal.
+Deterministische Policy-Enforcement auf Tool-Call-Ebene (Progent) ist ein wirksamer, aber nicht vollständiger Schutz; Dual-LLM-Architekturen (CaMeL) wurden bereits gebrochen.
+Was NICHT gesichert ist (INSUFFICIENT_EVIDENCE):
+
+Kein Paper vergleicht Architekturvarianten A–H kontrolliert gegeneinander.
+Kein empirischer Nachweis, welche Contract-Felder Reliability kausal verbessern (ABLATION_EVIDENCE_MISSING).
+Kein etablierter Standard für ein Retrieval→Execution-IR existiert; GraSP/SkillDAG/SkillOps sind Einzelsysteme.
+Architektonische Konsequenz (DESIGN_RECOMMENDATION): Das „?“ ist ein Contract Resolver, der ein advisory Retrieval Bundle gegen (a) maschinenlesbare Skill Contracts, (b) aktuellen Run State, (c) Policy und (d) Tool-Capabilities zu einem versionierten, hashbaren Execution Manifest kompiliert. Retrieval-Edges tragen Confidence; Execution-Edges tragen Autorität — und beide dürfen nie dieselbe Datenstruktur sein.
+
+2. Research Method + Source Quality
+Klasse	Quellen (Auswahl)	Status
+Peer-reviewed	GoS (per Repo: EMNLP '26), AgentDojo (NeurIPS 2024) [KB], Gorilla (NeurIPS 2024), ToolLLM (ICLR 2024)	verifiziert bzw. [KB]
+Primär-Preprints mit Ablationen	GoS, SkillRouter, GraSP, SkillDAG, SING, TGR, Progent, SkillRet	in Session gefunden
+Preprints nur zitiert (nicht gelesen)	SkillOps, SSL-Repräsentation, SkillsBench, SWE-Skills-Bench, 138k-SKILL.md-Studie, TRUSTDESC, SEAgent	Pointer, kein Claim-Träger
+Standards/Specs	MCP, Agent Skills, OpenTelemetry GenAI, SLSA/in-toto, OPA/Cedar	[KB], Implementierungsbeleg, kein Wirksamkeitsbeleg
+Engineering-Analogien	Build Systems, Query Planner, Saga, Capability Security	[KB], Analogie, nicht direkte Evidenz
+Bias-Warnung: Der Skill-Retrieval-Bereich ist 2026 von einer Welle chinesisch-/US-akademischer Preprints dominiert, überwiegend auf SkillsBench/ALFWorld/SkillRouter-Benchmark evaluiert; unabhängige Replikation fehlt weitgehend. Benchmark-Saturation ist bereits sichtbar: 
+11
+It improves SkillRet-Embedding-0.6B by 4.15 NDCG@10 points, from 78.03 to 82.18, where headroom remains, but yields a smaller gain for SkillRet-Embedding-8B near the performance ceiling, from 83.45 to 84.22.
+
+3. Terminologie / Ontologie
+Begriff	Semantik	Unterschied zu Nachbarn	Evidenz
+Retrieval Graph (= Skill Graph, Capability Graph im Retrieval-Kontext)	Offline konstruierter Graph über Skill-Records mit typisierten Relationen; Zweck: Discovery unter Budget	Kanten sind Wahrscheinlichkeitsaussagen (LLM-/heuristisch induziert)	GoS: 
+1
+GoS uses four edge types. Dependency edges represent executable prerequisites and form the primary structural relation
+Dependency Graph	Teilmenge der Retrieval-Graph-Kanten mit Prerequisite-Semantik; noch nicht an Instanz/State gebunden	vs. Execution: keine Bindung, keine Autorität	GoS, TGR
+Tool Dependency Graph	Dependency Graph auf Tool-/API-Ebene (Output→Input-Kompatibilität)	Granularität Tool statt Skill	
+34
+TGR ... leveraging tool dependencies to enhance the tool retrieval process for LLMs. We first define the criteria for tool dependency and establish a dataset to train a discriminator
+Execution Graph / Execution DAG	Instanziierte Invocations mit gebundenen Inputs/State; Kanten = harte Constraints	Knoten sind Invocations, nicht Skills	GraSP: Knoten sind 
+3
+instantiated skill invocations
+Plan Graph / Task Graph	Dekomposition eines Tasks in Subgoals; oft vor Retrieval	Abstraktionsebene höher als Execution	GNN4TaskPlan [KB]
+Workflow Graph	Vorab autorisierte, wiederverwendbare Execution-Schablone (BPMN/Argo)	statisch, human-authored	Engineering-Standard [KB]
+State Machine	Zustände + Transitionen; gut für Lifecycle mit Zyklen/Wartezuständen	Execution DAG ist azyklisch; SM erlaubt Loops/Approval-Wait	Engineering [KB]
+Control Flow Graph / Data Flow Graph	Zwei Kantenschichten desselben Execution Graphs	GraSP trennt bereits (state, data, order)	GraSP
+Provenance Graph	Nachträgliches Artefakt: was hat was erzeugt	Lesend, für Audit	W3C PROV [KB]
+Authorization Graph	ReBAC-Relationen (Zanzibar-Stil)	orthogonal zu allen anderen	[KB]
+Knowledge Graph	Domänenfakten, nicht Capabilities	häufig fälschlich mit Skill Graph gleichgesetzt	—
+Ontologische Kernaussage (INFERENCE): Skill Graph ≠ Execution DAG. Der Skill Graph ist ein Typ-Level-Graph (Skill-Klassen, epistemische Kanten); der Execution DAG ist ein Instanz-Level-Graph (gebundene Invocations, deontische Kanten = „muss vor“, „darf nur wenn“). Die Transformation Typ→Instanz ist genau die Compilation.
+
+4. Hypothesen H1–H20
+H	Status	Begründung (kurz)
+H1 Retrieval ≠ Execution Graph	SUPPORTED (Preprint)	GraSP-Trennung Retrieve/Compile/Execute; GoS liefert nur Bundle
+H2 unterschiedliche Optimierungsziele	SUPPORTED	GoS optimiert 
+4
+balancing reward, token efficiency, and runtime; GraSP optimiert Ordnung + Repair
+H3 Bundle ≠ Plan	SUPPORTED	GraSP: Flat-Kontext erzeugt 
+3
+cognitive overload und verliert Kausalstruktur
+H4 Compilation-Phase nötig	PARTIAL	GraSP zeigt Nutzen; kein Ablation „mit/ohne Compiler bei gleichem Retrieval“ isoliert publiziert; Fallback zu ReAct zeigt Grenze
+H5 Contract = zentrale Schnittstelle	PARTIAL	GoS normalisiert Records deterministisch; SSL-Repräsentation [Pointer]; direkte Kausalevidenz fehlt
+H6 Contract-Felder	MIXED	siehe §8: ~6 Felder empirisch motiviert, Rest Engineering
+H7 Retrieval- ≠ Execution-Deps	SUPPORTED	GoS-Deps sind Klassenkanten; GraSP-Deps sind instanzgebunden (state/data/order)
+H8 Edge Confidence/Provenance	PARTIAL	GoS-Repo: Graph-Build variiert per LLM (
+7
+Cached responses must be disabled or isolated when repeated graph builds are intended to measure LLM construction variance.); SkillDAG: propose-then-commit für 
+9
+execution-backed edges
+H9 Re-Validation gegen State	SUPPORTED	GraSP: semantische Retrieval liefert 
+6
+topically relevant but operationally inappropriate for the current state.
+H10 Authorization vor Side-Effect	SUPPORTED (Security-Literatur)	Progent: 
+45
+Every tool call is checked against such a policy through a deterministic procedure, enforcing the principle of least privilege.
+H11 explizite Success/Failure-Semantik	PARTIAL	GraSP prüft Pre/Post an jedem Knoten; Failure-Taxonomie nicht standardisiert
+H12 Node- vs E2E-Validation	SUPPORTED (Engineering) + GraSP	lokale Repair setzt Node-Level voraus
+H13 gated Graph Evolution	PARTIAL	SkillDAG propose-then-commit; keine Langzeit-Drift-Studie
+H14 Versionierbar/Diffbar	INSUFFICIENT	keine Paper-Evidenz; Engineering-Standard (Lockfiles)
+H15 Reproduzierbarkeit = Konfiguration + Verteilung	SUPPORTED (Konzept)	pass^k (τ-bench) [KB]; GoS-Variance-Hinweis
+H16 Complexity Gate	PARTIAL	GraSP-Fallback zu ReAct bei low confidence; SWE-Skills-Bench-Titel „Do Agent Skills Actually Help?“ als Gegenpointer
+H17 Graph/Contract/Doc-Qualität gekoppelt	SUPPORTED	SkillRouter: Body-Entfernung kostet 31–44 pp; MCP-Description-Smells [Pointer]; 138k-SKILL.md-Studie [Pointer]
+H18 falsche Kante gefährlicher als fehlende	INSUFFICIENT direkt; SUPPORTED per Security-Analogie	Tool Poisoning via Description (TRUSTDESC); keine Edge-Level-Attack-Studie
+H19 Retrieval advisory / Execution aus Policy	SUPPORTED (INFERENCE aus H8+H10)	—
+H20 Harness Compiler/Resolver	PARTIAL	Präzedenz: GraSP Compile, SkillOps HSEG als 
+27
+executable planning substrate, LLMCompiler [KB]; Determinismus nicht getestet
+5. Claim–Evidence–Counterevidence Matrix
+Claim	Support	Counterevidence / Null	Klasse
+Strukturelle Retrieval > Vector Retrieval bei großen Libraries	GoS: 
+4
+ablation studies across skill libraries ranging from 200 to 2,000 skills further demonstrate that GoS consistently outperforms both vanilla skills loading and simple vector retrieval	Nur bis 2K getestet; SkillRouter erreicht 80K ohne Graph mittels Retrieve+Rerank; Diversity-Routing zeigt Redundanz-Problem, nicht Dependency-Problem als Hauptfehler	EMPIRICAL_RESULT, Boundary: ≤2K
+Metadaten reichen nicht	
+17
+removing the body drops top-1 routing accuracy by 31–44 percentage points across sparse (BM25), dense (Qwen3-Emb-8B), and reranking	Widerspricht Progressive-Disclosure-Annahme der Agent-Skills-Spec (Name+Description als Index)	EMPIRICAL_RESULT
+Routing-Gewinn → Task-Erfolg	
+18
+routing gains transfer to improved task success, with larger gains for more capable agents.	Modellabhängig; schwache Modelle profitieren weniger	EMPIRICAL_RESULT
+Skills helfen generell	SkillsBench: kuratierte Skills verbessern	
+29
+having many skills available does not guarantee reliable use.	MIXED
+Dual-LLM sichert Prompt Injection	CaMeL [KB]	SEAgent: 
+37
+these frameworks exhibit rather narrow practicality; most of them exhibit limited defense coverage by primarily focusing on simple indirect prompt injection attacks	CHALLENGED
+Deterministische Policy Enforcement wirkt	Progent	LLM-generierte Initialpolicy ist selbst Angriffsfläche; SMT prüft nur Narrowing/Expansion	PARTIAL
+Tool-Description ist vertrauenswürdig	—	TRUSTDESC-Prämisse: Beschreibungen können vergiftet sein; Coding-Assistants-Paper: 
+44
+LLMs cannot reliably distinguish between instructions and data	CONTRADICTED
+Graph-Konstruktion ist deterministisch	—	GoS nutzt 
+1
+a lightweight LLM pass only to recover retrieval-critical semantic fields → Variance	CONTRADICTED für LLM-Anteil
+6. Retrieval-Graph Findings (Stream A)
+A1 – Hybrid Seeding + Graph Diffusion (EMPIRICAL_RESULT, [2026-PREPRINT/EMNLP'26]): GoS-Pipeline: 
+2
+hybrid semantic-lexical seeding, reverse-aware Personalized PageRank, and context-budgeted hydration. Die reverse-aware Komponente adressiert direkt das Prerequisite-Problem: 
+2
+semantic retrieval surfaces topically relevant skills but can miss upstream and downstream prerequisite skills, creating a prerequisite gap.
+
+A2 – Skalierung: Empirisch belegt 200→2K (GoS); 80K nur für nicht-graphbasiertes Retrieve+Rerank (SkillRouter). INSUFFICIENT_EVIDENCE für Graph-Retrieval bei 10K–100K. Offene Frage: PPR-Kosten und Edge-Rauschen bei O(10⁵) Knoten.
+
+A3 – Dependency-Diskriminator statt LLM-Induktion (Alternative): TGR trainiert einen Klassifikator auf 300K Paaren — potenziell reproduzierbarer als LLM-Induktion, aber nur Tool-Level.
+
+A4 – Konflikt-/Duplikat-Kanten (SkillDAG, [2026-PREPRINT]): 
+9
+skills depend on, conflict with, specialize, or duplicate one another, a structure invisible to both full enumeration and embedding similarity. → Retrieval-Graph braucht mindestens 4 Kantentypen: depends_on, conflicts_with, specializes, duplicates.
+
+A5 – Same-Capability Ambiguity: SkillResolve-Bench [Pointer] adressiert das Problem mehrerer Skills für dieselbe Capability — relevant für Enterprise (mehrere Versionen/Anbieter). Diversity-aware Routing: 
+12
+multi-skill routing requires recovering complete skill sets.
+
+A6 – MCP-Skala: SING [2026-PREPRINT] auf 
+31
+779 servers and 7,471 tools; Ergebnis: 
+31
+improving Global Recall@5 by up to 59.8% and downstream success rate by up to 28.9% while reducing full-corpus tool-schema exposure by 99.8%. Wichtiger methodischer Punkt: 
+31
+non-gold tools may still solve the task when they provide equivalent or complementary functionality. → Gold-Set-basierte Recall-Metriken sind für Enterprise unzureichend.
+
+A7 – Stale/Falsche Kanten: Keine Studie misst Edge-Precision/Recall gegen Ground Truth über Zeit. INSUFFICIENT_EVIDENCE.
+
+A8 – Retrieval-Metrik-Lücke: Dependency-Pair Co-Recovery (beide Enden einer Kante im Bundle) ist bei GoS implizit; keine standardisierte Definition. → Metrik ohne etablierte Definition.
+
+7. Retrieval→Execution Gap Analysis (Stream B)
+Direkte Evidenz:
+
+GraSP-Pipeline: 
+6
+(1) Retrieve selects a focused subset of skills from a large library conditioned on experience memory; (2) Compile organizes them into a verified DAG with typed edges (state, data, order); (3) Execute & Verify traverses the graph, checking pre/postconditions at every node; (4) Repair patches only the failed subgraph while preserving verified progress. Komplexitätsargument: 
+6
+Flat skill execution (left) treats skills as a sequential chain where any failure invalidates the entire suffix at O(N) cost; GRASP (right) compiles skills into a typed DAG with explicit dependencies, enabling 
+O
+(
+d
+h
+)
+O(d 
+h
+ ) local repair.
+Complexity Gate in GraSP: 
+6
+When retrieval confidence is low, the system falls back to ReAct.
+SkillOps trennt 
+27
+the task-time loop, which retrieves and stitches skills for the current task, while Algorithm 4 gives the library-time loop, which diagnoses and maintains the skill library after execution. → Präzedenz für getrennte Runtime- vs. Evolution-Schleifen (H13).
+Analogien (nicht direkte Evidenz), [KB]:
+
+Domäne	Mechanismus	Übertragbar auf	Grenze
+Compiler (LLVM)	Frontend → IR → Backend; Verifier auf IR	Retrieval=Frontend, Manifest=IR, Runtime=Backend	LLM-Frontend ist nicht deterministisch
+Package Resolution (Cargo/npm/Nix)	Version-Constraint-Solver, Lockfile, Content-Hash	Skill-Version-Resolution, Manifest-Hash	Skill-Deps sind semantisch, nicht nur Versionen
+Build Systems à la carte	Dynamic vs static dependencies, early cutoff, minimality	Wann Rebuild des Execution Graph nötig ist	Theorie für Files, nicht State
+Query Planner (Volcano/Cascades)	logischer Plan → physischer Plan, Kostenmodell	Skill-Plan → Tool-Binding mit Cost	keine Kostenmodelle für Skills etabliert
+Workflow Engines (Temporal/Argo)	Durable Execution, Event History, deterministische Replays	Checkpointing, Retry, Replay	Determinismus-Anforderung bricht mit LLM-Steps
+Policy Engines (OPA/Cedar)	Policy-as-Code, Decision Logs, Cedar formal verifiziert	Authorize-Phase	keine Agent-spezifischen Policies vordefiniert
+Capability Systems (ocap)	Unforgeable references, Attenuation	Tool-Handles nur via Manifest ausgeben	LLM-Kontext ist kein Kapabilitäts-tauglicher Speicher
+INFERENCE: Die fehlende Stufe ist ein Resolver mit Compiler-Semantik, dessen Input stochastisch (Retrieval) und dessen Output deterministisch gegenüber Input-Snapshot sein muss. Determinismus gilt für Resolve(Bundle, Contracts, State, Policy) → Manifest, nicht für die Erzeugung des Bundles.
+
+8. Skill/Capability Contract Evidence Matrix (Stream C)
+Evidenzbasis: GoS-Record-Schema (
+1
+a canonical name, capability summary, I/O fields, domain tags, tooling, entrypoints, compatibility notes, and a stable local source path.), GraSP (pre/postconditions), SkillDAG (conflicts), Progent (tool name + args als Policy-Subjekt), MCP Tool Annotations [KB].
+
+Feld	Klasse	Evidenz
+SKILL_ID	ESSENTIAL	GoS canonical name; ohne ID keine Kante
+VERSION	ESSENTIAL (Enterprise)	Engineering-Standard; keine Paper-Ablation → Reproduzierbarkeit ohne Version undefiniert
+DIGEST	STRONGLY_RECOMMENDED	Analogie Lockfile/SLSA [KB]; Tool-Poisoning-Schutz gegen stille Body-Änderung
+PROVENANCE	STRONGLY_RECOMMENDED	Skill-Poisoning-Angriffsflächen (Coding-Assistants-Paper)
+DESCRIPTION	ESSENTIAL für Retrieval, nicht ausreichend	SkillRouter 31–44 pp
+ACTIVATION (Trigger-Bedingungen)	CONTEXT_DEPENDENT	Agent-Skills-Spec [KB]; keine Ablation
+INPUTS/OUTPUTS (typisiert)	ESSENTIAL	GoS I/O fields; GraSP data edges; TGR Dependency-Kriterium ist I/O-Kompatibilität
+REQUIRES/PROVIDES	STRONGLY_RECOMMENDED	GoS Dependency edges; GraSP state edges
+CONFLICTS_WITH	STRONGLY_RECOMMENDED	SkillDAG conflict signals
+PRECONDITIONS/POSTCONDITIONS	STRONGLY_RECOMMENDED	GraSP prüft an jedem Knoten; PDDL-Tradition [KB]; keine isolierte Ablation
+PERMISSIONS	ESSENTIAL (Enterprise)	Progent Policy-Subjekt
+SIDE_EFFECTS	ESSENTIAL (Enterprise)	MCP destructiveHint/readOnlyHint sind nur Hints [KB] → Contract muss verbindlich sein
+RESOURCE_REQUIREMENTS	CONTEXT_DEPENDENT	GoS "tooling"; keine Evidenz für Reliability-Gewinn
+FAILURE_MODES	STRONGLY_RECOMMENDED	GraSP local repair braucht Klassifikation
+VALIDATORS	STRONGLY_RECOMMENDED	SkillWeaver: 
+22
+verifier quality and skill lifecycle management central concerns.
+EVALS	CONTEXT_DEPENDENT	für Evolution nötig, nicht für Runtime
+COMPATIBILITY	OPTIONAL	GoS compatibility notes
+TIMEOUT	CONTEXT_DEPENDENT	Engineering
+IDEMPOTENCY	STRONGLY_RECOMMENDED bei Retry	Engineering (Idempotency Keys) [KB]; MCP idempotentHint
+ROLLBACK	CONTEXT_DEPENDENT	Saga [KB]; nur bei kompensierbaren Effekten
+STATE_READS/STATE_WRITES	STRONGLY_RECOMMENDED	GraSP state edges; ohne sie kein Parallelismus-Nachweis
+SKILL.md vs. Contract (INFERENCE + Teilevidenz): GoS zeigt, dass aus Packages deterministisch extrahierbare Felder existieren und der LLM-Anteil nur Lückenfüller ist. SkillRouter zeigt, dass der prozedurale Body Retrieval-Signal und Ausführungsinhalt ist. → Trennung: SKILL.md = Retrieval-Corpus + Prozedur (für LLM); contract.json = Autoritätsobjekt (für Resolver/Policy). Beide sind Teil eines Packages und gemeinsam gehasht. Diese Trennung ist primär Engineering-Ableitung, empirisch nur indirekt gestützt.
+
+9. Execution-Graph Architecture Patterns (Stream D)
+Pattern	Ausreichend wenn	Unzureichend wenn	Evidenz
+Direct execution (ReAct)	≤ ~3 unabhängige Steps, keine Side-Effects mit Risiko	Dependency-Ketten	GraSP-Fallback; Baseline in allen Papers
+Static DAG	Dependencies zur Compile-Zeit bekannt, keine Approval-Waits	dynamische Verzweigung aus Tool-Output	GraSP, LLMCompiler [KB]
+State Machine	Approval Gates, Loops, Timeouts, Wiederaufnahme	hoher Parallelismus	Engineering [KB]
+Event-driven	externe Trigger, langlaufend	Debuggability	Engineering [KB]
+Dynamic Replanner	Retrieval Confidence low oder Postcondition fail	Hochrisiko-Side-Effects (Replan = neue Authorization)	GraSP Repair
+Node Contract (DESIGN_RECOMMENDATION, gestützt durch GraSP-Knotenmodell): skill_ref@version+digest, bound_inputs, expected_outputs, state_reads, state_writes, preconditions, postconditions, permission_grant_ref, side_effect_class, execution_target, timeout, retry_policy, validators, failure_class_map.
+
+Edge Contract: data (Output→Input), control (Bedingung), state (Write→Read auf Key), authorization (Approval-Grant → Node), order (nur Sequenz). GraSP belegt drei davon; authorization ist Enterprise-Ergänzung ohne Paper-Evidenz.
+
+INFERENCE zu „DAG oder State Machine“: Ein Execution DAG ist ein Plan; eine State Machine ist der Run-Lifecycle (PLANNED → AUTHORIZED → RUNNING → AWAITING_APPROVAL → VALIDATED → COMMITTED | ROLLED_BACK). Beides existiert; sie sind nicht alternativ.
+
+10. Authorization/Trust Architecture (Stream E)
+Belegte Prinzipien:
+
+Deterministische Policy auf Tool-Call-Ebene: Progent 
+43
+represents privilege as a security policy consisting of symbolic rules over tool names and arguments. These rules specify which tool calls are allowed for task completion and which unnecessary ones are blocked for security. Mit 
+42
+an SMT-based procedure to determine whether policy updates are expansions or narrowings.
+Privilege-Escalation-Coverage-Lücke: SEAgent demonstriert Confused-Deputy-Angriffe, bei denen 
+37
+the poisoned content retrieved in the first step ... polluted the context of the anonymous Spoke, which then successfully invoked the privileged open_front_door tool without being flagged.
+Description Poisoning: Motivation für TRUSTDESC (Beschreibungen aus Code generieren statt vertrauen) [Pointer].
+Trust Gates (DESIGN_RECOMMENDATION):
+
+Ingest Gate (Skill-Registrierung): Digest, Signatur, Description-vs-Code-Konsistenz.
+Resolve Gate: Retrieval-Bundle darf nur Skills mit gültigem Contract binden.
+Authorize Gate (vor Manifest-Freigabe): Policy-Engine prüft gesamtes Manifest (nicht nur Einzelcalls) — schließt Confused-Deputy-Ketten teilweise, da Datenherkunft pro Knoten bekannt.
+Runtime Gate (pro Tool-Call): Progent-Stil, unabhängig vom Manifest (Defense in Depth).
+Commit Gate: Postcondition + Approval für irreversible Effekte.
+Regelprüfung: Discovery ≠ Permission — SUPPORTED (SING zeigt: 99.8% Reduktion der Exposure ist Retrieval, nicht Rechte). Planning ≠ Authorization — SUPPORTED (CaMeL-Bruch zeigt: Plan des privileged LLM war nicht immun). Model choice ≠ authorization — INFERENCE.
+
+Grenze: Progents Initialpolicy wird per LLM generiert — d. h. der Policy-Generator ist selbst LLM-abhängig. Enterprise: Policies aus Preset/Contract ableiten, LLM darf nur narrowen.
+
+11. State/Memory Semantics (Stream G)
+State-Typ	Node darf lesen	Node darf schreiben	Owner
+Working Context (Prompt)	ja	nein (nur Runtime)	Runtime
+Run State (Node-Outputs, Status)	deklarierte state_reads	deklarierte state_writes	Execution Engine
+Workflow State (Lifecycle)	nein	nein	State Machine
+Artifact State	via Handle	via Handle + Digest	Artifact Store
+Environment State	via Tool	via Tool (side-effect class)	extern
+Episodic Memory	Retrieval-Phase	nur Evaluate-Phase, gated	Memory Service
+Semantic/Procedural Memory (Skill Library)	Retrieval	nur Evolution-Lifecycle	Registry
+Evidenz: GraSP konditioniert Retrieval auf experience memory und trennt Execution davon; SkillOps trennt task-time/library-time. Memory Poisoning (AgentPoison/MINJA [KB]) begründet, dass Runtime-Nodes nie direkt in Procedural Memory schreiben. INFERENCE: Deklarierte state_reads/writes erlauben statische Race-Erkennung (Write-Write-Konflikte auf gleichem Key ohne Ordnungskante = Compile-Fehler).
+
+12. Validation/Recovery Model (Stream F)
+Validate-before (Preconditions gegen aktuellen State), Validate-after (Postconditions, Schema, deterministische Validatoren), E2E (Task-Grader). GraSP belegt Node-Level Pre/Post; E2E-Graders sind Benchmark-Praxis.
+
+Failure-Klassen → Recovery (DESIGN_RECOMMENDATION):
+
+Klasse	Recovery	Authorization neu?
+TRANSIENT	Retry mit Backoff, nur wenn idempotent	nein
+PRECONDITION_FAILED	State refresh → Re-Resolve Subgraph	ja falls Plan ändert
+CONTRACT_VIOLATION	Skill quarantänisieren, Repair mit Alternative	ja
+AUTHORIZATION_DENIED	Escalate (Human) oder Abort	—
+TOOL_FAILURE	Retry/Alternative Tool-Binding	nein bei gleichem Skill
+VALIDATION_FAILED	Local Repair (GraSP)	ja falls neue Nodes
+STATE_DIVERGENCE	Abort Branch, Rollback-Saga	ja
+DEPENDENCY_MISSING	Re-Retrieve mit reverse traversal	ja
+POLICY_BLOCK	Abort, Audit	—
+UNRECOVERABLE	Rollback + Escalate	—
+Retry Amplification (keine etablierte Definition): Verhältnis tatsächlicher Tool-Calls zu Plan-Calls; Kontrolle über Retry-Budget im Manifest.
+
+13. Versioning/Reproducibility Model (Stream H)
+Definitionen (PROPOSED_STANDARD, angelehnt an ACM-Artifact-Terminologie [KB]):
+
+STRUCTURAL REPRODUCIBILITY: gleicher Snapshot (preset, contracts, policy, retrieval-graph version, state snapshot) → byte-identisches Manifest (graph_hash). Testbar deterministisch.
+BEHAVIORAL REPRODUCIBILITY: gleiches Manifest → gleiche Postconditions erfüllt (nicht gleiche Trajektorie).
+STATISTICAL REPRODUCIBILITY: pass^k / Erfolgsrate über n Runs innerhalb Konfidenzintervall [KB: τ-bench pass^k].
+Versionierte Artefakte: skill, contract, retrieval graph (inkl. Konstruktions-Seed/Modell — GoS-Repo-Hinweis zur Konstruktionsvarianz), preset, tool schema, model id, evaluator, policy. INSUFFICIENT_EVIDENCE, ob Semantic Versioning für Skills sinnvoll ist; Content-Hash ist die sicherere Basis.
+
+14. Graph Evolution Architecture (Stream I)
+Offline-Konstruktion (GoS): reproduzierbar nur mit fixiertem LLM/Cache.
+Runtime-Edge-Proposal (SkillDAG): 
+9
+a propose-then-commit protocol lets the agent register execution-backed edges so the graph accumulates structure across episodes. Positiv: Kanten sind ausführungsbelegt. Risiko: Selbstbestätigung (Agent nutzt A→B, weil Kante existiert; Kante wird bestätigt).
+Library-Maintenance-Loop (SkillOps): getrennte Schleife.
+Self-improving Libraries (SkillWeaver): Gewinne belegt (
+25
+relative success rate improvements of 31.8% and 39.8%), aber Verifier-Qualität ist die Achillesferse.
+Edge-Level-Metriken (keine etablierte Definition): edge precision (Kante genutzt ∧ Postcondition erfüllt), edge recall (fehlende Kante ↔ DEPENDENCY_MISSING-Fehler), churn rate, confidence calibration. Empfehlung: Kanten-Confidence nur über kontrafaktische Evidenz erhöhen (Erfolg ohne Kante vs. mit), sonst Feedback-Loop.
+
+15. Architecture Comparison A–H
+Variante	Evidenz	Stärken	Schwächen	Enterprise-Fit
+A Flat → LLM	Baselines aller Papers	einfach	Prerequisite Gap, keine Autorität	nur Low-Risk
+B Structural → LLM	GoS	Dependency-Recall	LLM entscheidet Execution; kein Gate	mittel
+C Structural → Resolver → det. DAG	GraSP (Teil)	Repair, Ordnung	rigide bei dynamischen Tasks	hoch bei planbaren Tasks
+D … → State Machine	Engineering	Approval/Loops	weniger Parallelismus	hoch für Approval-Workflows
+E … → Planner → Policy Gate → DAG	Progent + GraSP kombiniert (nicht gemeinsam evaluiert)	Security	Latenz	hoch
+F Decomposition → Retrieval/Subtask → Resolver	Task-Decomposition-Reranking [Pointer]	Precision	Fehlerfortpflanzung aus Dekomposition	hoch bei komplexen Tasks
+G Dynamic/Evolving beides	SkillDAG	Adaptivität	Drift, Auditierbarkeit	niedrig ohne Gating
+H Hybrid	—	—	Komplexität	Ziel-Architektur, keine vergleichende Evidenz
+Keine Gewinnerbewertung möglich: Kein Paper testet C vs D vs E kontrolliert.
+
+16. Proposed Intermediate Representation
+Feld	Klasse	Evidenz
+task_id, preset_version	ESSENTIAL	Reproduzierbarkeit
+selected_capabilities + skill_versions + digests	ESSENTIAL	GoS records; Lockfile-Analogie
+resolved_dependencies (typed edges)	ESSENTIAL	GraSP
+input/output_bindings	ESSENTIAL	GraSP data edges
+state_reads/writes	STRONGLY_RECOMMENDED	GraSP state edges
+permissions_required / granted (Referenz auf Decision-Log)	ESSENTIAL	Progent
+execution_order / branches	ESSENTIAL	DAG
+validators, retry_policy, rollback_policy	STRONGLY_RECOMMENDED	GraSP verify/repair
+approval_gates	CONTEXT_DEPENDENT	Enterprise
+tool_bindings, environment_requirements	STRONGLY_RECOMMENDED	Query-Planner-Analogie
+provenance (retrieval scores, edge confidences)	STRONGLY_RECOMMENDED	H8
+graph_hash	ESSENTIAL	Structural Reproducibility
+Name-Empfehlung: ExecutionManifest (bindend) mit eingebettetem ResolvedCapabilitySet (Abschnitt). „CapabilityIR" für die Zwischenform vor Authorization.
+
+17. Minimum Enterprise Contract Set
+skill_id, version, digest, description, inputs, outputs, requires, provides, permissions, side_effect_class, preconditions, postconditions, failure_modes, state_reads, state_writes.
+
+18. Advanced Extensions
+conflicts_with, specializes, duplicates (SkillDAG), validators, evals, idempotency, rollback, resource_requirements, activation, compatibility, cost_model, sla.
+
+19. Evidence-Based Runtime Lifecycle
+text
+
+DISCOVER  (Registry-Ingest, Digest, Signatur)                 → Engineering
+RETRIEVE  (hybrid seeding + reverse-aware diffusion + budget) → GoS/SkillRouter
+RESOLVE   (Bundle × Contracts → CapabilityIR; Konflikte, Version) → GraSP Compile
+BIND      (Inputs/State/Tool-Bindings gegen aktuellen State)  → GraSP/H9
+AUTHORIZE (Policy über gesamtes Manifest; Grants referenziert) → Progent
+PLAN      (Ordnung, Parallelität, Approval-Gates → Manifest+hash) → LLMCompiler[KB]
+EXECUTE   (Runtime-Gate pro Call, Checkpoint)                 → Progent/Temporal[KB]
+VALIDATE  (Pre → Post → E2E)                                  → GraSP
+COMMIT/ROLLBACK (Saga für kompensierbare Effekte)             → Engineering
+TRACE     (OTel GenAI semconv + Manifest-Ref)                 → Standard[KB]
+EVALUATE  (Statistisch; Edge-Proposals → Evolution-Queue)     → SkillDAG/SkillOps
+20. Machine-readable Skill Contract (Kandidat)
+YAML
+
+contract_version: "0.1"
+skill_id: "finance.invoice.reconcile"
+version: "2.3.0"
+digest: "sha256:…"            # über SKILL.md + contract + code
+provenance: {publisher: "…", signature: "…", source_commit: "…"}
+description: "…"               # Retrieval-Signal, NICHT Autorität
+inputs:  [{name: invoice_ids, type: "array<string>", required: true}]
+outputs: [{name: reconciliation_report, type: "artifact/pdf"}]
+requires: [{capability: "erp.read.invoices", min_version: "1.x"}]
+provides: ["finance.reconciliation.report"]
+conflicts_with: ["finance.invoice.reconcile_legacy"]
+preconditions:  [{check: "state.erp_session.valid == true"}]
+postconditions: [{check: "artifact.exists(reconciliation_report)"}]
+permissions: [{resource: "erp:invoices", action: "read"}, {resource: "storage:reports", action: "write"}]
+side_effect_class: "WRITE_INTERNAL"   # READ_ONLY | WRITE_INTERNAL | WRITE_EXTERNAL | IRREVERSIBLE
+state_reads:  ["erp_session"]
+state_writes: ["reconciliation.last_run"]
+idempotency: {key_from: ["invoice_ids"], safe_retry: true}
+rollback: {strategy: "compensate", handler: "finance.invoice.reconcile.undo"}
+failure_modes: [{code: "ERP_TIMEOUT", class: "TRANSIENT"}, {code: "MISMATCH", class: "VALIDATION_FAILED"}]
+validators: [{type: "schema", ref: "schemas/report.json"}, {type: "deterministic", ref: "checks/sum_equals.py"}]
+timeout_s: 300
+21. Execution Manifest / IR (Kandidat)
+YAML
+
+manifest_version: "0.1"
+task_id: "…"
+preset: {id: "finance-default", version: "1.4.0"}
+snapshot: {retrieval_graph: "gos@2026-09-01#sha256:…", policy: "v17", model: "…", state_epoch: 1042}
+capabilities:
+  - node: n1
+    skill: "erp.session.open@1.2.0#sha256:…"
+    bindings: {inputs: {tenant: "$task.tenant"}}
+    permission_grant: "grant://decision-log/…"
+    side_effect_class: "READ_ONLY"
+  - node: n2
+    skill: "finance.invoice.reconcile@2.3.0#sha256:…"
+    bindings: {inputs: {invoice_ids: "$task.invoice_ids"}}
+    permission_grant: "grant://decision-log/…"
+    approval_gate: null
+edges:
+  - {from: n1, to: n2, type: state, key: "erp_session"}
+retrieval_provenance:
+  - {skill: "erp.session.open", seed_score: 0.41, ppr_score: 0.77, edge_confidence: 0.83, edge_source: "gos-induced"}
+retry_budget: {max_total_calls: 12}
+rollback_plan: [{node: n2, handler: "…"}]
+validators: {e2e: [{type: "grader", ref: "…"}]}
+graph_hash: "sha256:…"      # über alles außer retrieval_provenance
+22. Architektur (Mermaid)
+mermaid
+
+flowchart LR
+  T[Task] --> R[Retrieval Layer<br/>hybrid seed + reverse PPR<br/>budgeted hydration]
+  RG[(Retrieval Graph<br/>versioned, confidences)] --> R
+  R -->|Retrieval Bundle<br/>ADVISORY| C[Contract Resolver]
+  SC[(Skill Contracts<br/>digest, version)] --> C
+  ST[(Run State Snapshot)] --> C
+  TC[(Tool Capabilities / MCP)] --> C
+  P[(Preset)] --> C
+  C -->|CapabilityIR| A[Policy Engine<br/>deterministic]
+  A -->|Execution Manifest + hash| E[Execution Engine<br/>DAG + Lifecycle SM]
+  E -->|per-call| G[Runtime Policy Gate]
+  G --> X[Tools / Sandbox]
+  E --> V[Validators pre/post/e2e]
+  V -->|fail| REP[Local Repair → back to Resolver]
+  V -->|ok| CM[Commit / Saga Rollback]
+  E --> O[Trace: OTel + Manifest ref]
+  O --> EV[Evaluate: statistical]
+  EV -->|edge proposals| Q[Evolution Queue<br/>candidate→validate→approve→version]
+  Q --> RG
+23. Repository-Struktur
+text
+
+harness/
+  kernel/            # Lifecycle SM, Manifest schema, Failure classes (invariant)
+  retrieval/         # graph build (offline, seeded), seeding, diffusion, budget
+  resolver/          # contract loading, version solve, conflict check, binding
+  policy/            # OPA/Cedar adapter, decision log
+  execution/         # DAG runner, checkpoints, retry, saga
+  validation/        # schema, deterministic validators, graders
+  state/             # run state store, epochs
+  trace/             # OTel exporter, manifest linkage
+  evolution/         # edge proposals, metrics, gated release
+  presets/<domain>/
+  skills/<id>/{SKILL.md, contract.yaml, code/, tests/}
+  schemas/{contract.json, manifest.json, retrieval_graph.json}
+  evals/{retrieval/, resolver/, e2e/, security/}
+24. Evaluation & Regression Framework
+Retrieval: Recall@k, Full Coverage (Diversity-Routing), Dependency-Pair Co-Recovery (neu), Token-Budget-Effizienz.
+Resolver: Manifest-Determinismus (Hash-Gleichheit über n Builds), Konflikt-Erkennungsrate, Bind-Fehler.
+Authorization: Unauthorized-Action-Rate (AgentDojo-Stil [KB]), Policy-Violation-Rate, Confused-Deputy-Suite (SEAgent-Szenarien).
+Execution: Node-Postcondition-Rate, Repair-Success, Retry-Amplification (neu).
+Reproducibility: pass^k, Repeated-Run-Variance.
+Evolution: Edge Precision/Recall (neu), Churn, Regression-Rate nach Graph-Release.
+Regression Gate: Kein Graph-/Contract-Release ohne Nicht-Verschlechterung auf E2E + Security-Suite.
+25. Security Threat/Failure Model
+Threat	Eintrittspunkt	Mitigation	Evidenz
+Skill/Tool Description Poisoning	Registry	Digest, Description-aus-Code-Prüfung	TRUSTDESC [Pointer]
+Indirect Prompt Injection via Tool-Output	Execute	Runtime Gate, Manifest-gebundene Rechte	Progent; Grenze: SEAgent
+Confused Deputy über Skill-Ketten	Resolve/Execute	Manifest-weite Datenherkunfts-Policy	SEAgent-Angriff
+Poisoned Retrieval Edge	Retrieval Graph	Edges advisory; Resolver ignoriert Kanten ohne Contract-Match	INFERENCE (H18)
+Memory Poisoning	Evaluate	Kein Runtime-Write in Procedural Memory	[KB]
+Version Confusion	Resolve	Digest-Pinning im Manifest	Lockfile-Analogie
+Policy-Generator kompromittiert	Authorize	Preset-Policy als Obergrenze; LLM darf nur narrowen	Progent SMT
+26. Open Research Gaps
+Kontrollierte Ablation „Retrieval fixiert, Compiler an/aus".
+Contract-Feld-Ablation (description-only vs I/O vs full).
+Graph-Retrieval > 10K Skills.
+Edge-Level-Metriken und Drift-Langzeitstudien.
+Manifest-weite Authorization vs. Per-Call-Gate — additive Wirkung?
+Determinismus der Resolver-Stufe bei LLM-gestütztem Binding.
+Kosten-/Latenzmodell des Compile-Overheads vs. Erfolgsgewinn.
+27. Enterprise Design Principles (Auswahl, 18)
+#	Prinzip	Evidenz	Konfidenz	Apply	Do not apply	Falsifier
+1	Retrieval ist advisory	GoS/GraSP	hoch	immer	—	Retrieval-Graph-Kanten korrelieren 1:1 mit Execution-Erfolg
+2	Compile before execute	GraSP	mittel	≥2 abhängige Skills	Single-Step	Flat-Kontext erreicht gleiche Repair-Kosten
+3	Body ist Retrieval-Signal	SkillRouter	hoch	große Registries	<100 Skills	Metadaten-only erreicht Parität
+4	Digest-Pinning	Analogie	mittel	Enterprise	Prototyp	—
+5	Deterministische Policy auf Call-Ebene	Progent	hoch	side-effectful	read-only sandbox	Prompt-Guard erreicht 0% Unauthorized
+6	Manifest-weite Authorization zusätzlich	SEAgent-Angriffe	mittel	Multi-Step	—	Per-Call-Gate deckt Confused Deputy ab
+7	Pre/Post an jedem Node	GraSP	mittel	wenn prüfbar	wenn Postconditions unbestimmbar	Kein Reliability-Gewinn in Ablation
+8	State reads/writes deklarieren	GraSP	mittel	parallel	seriell trivial	—
+9	Node-Failure klassifizieren	Engineering	mittel	immer	—	—
+10	Kein Runtime-Write in Skill Library	Memory-Poisoning	hoch	immer	—	—
+11	Edge-Proposals gated	SkillDAG + Risiko	mittel	Evolution	statische Libs	Autonome Updates zeigen keinen Drift
+12	Reproduzierbarkeit strukturell + statistisch	pass^k	hoch	immer	—	—
+13	Complexity Gate	GraSP-Fallback	mittel	immer	—	DAG schlägt ReAct auch bei 1-Step
+14	Retrieval-Graph versionieren inkl. Build-Seed	GoS-Repo-Variance	hoch	LLM-induziert	deterministisch gebaut	—
+15	Konflikt-Kanten first-class	SkillDAG	mittel	mehrere Anbieter	—	—
+16	Non-gold-Erfolg zulassen	SING	hoch	Eval	—	—
+17	Descriptions aus Code verifizieren	TRUSTDESC	niedrig-mittel	Third-Party-Skills	intern	—
+18	Policy-LLM darf nur narrowen	Progent	mittel	dynamische Policies	statisch	—
+28. Source Map
+Entscheidung	Quelle	Klasse	Revision-Trigger
+Hybrid + reverse PPR	GoS 2604.05333	EMPIRICAL (≤2K)	Null-Ergebnis >10K
+Body indexieren	SkillRouter 2603.22455	EMPIRICAL	Metadaten-only-Parität
+Compile-Stage	GraSP 2604.17870	EMPIRICAL (Preprint)	isolierte Ablation negativ
+Konflikt-/Propose-Commit	SkillDAG 2606.03056	Preprint	Drift-Studie
+Deterministische Policy	Progent 2504.11703	EMPIRICAL	—
+Grenzen Dual-LLM	SEAgent 2601.11893	EMPIRICAL	—
+Non-gold-Metrik	SING 2606.16591	Methodik	—
+Library-Loop getrennt	SkillOps 2605.13716	Pointer	—
+29. Bibliography
+Liu et al., Graph-of-Skills, arXiv:2604.05333 (Repo: github.com/davidliuk/graph-of-skills, EMNLP '26)
+Zheng et al., SkillRouter, arXiv:2603.22455
+GraSP, arXiv:2604.17870 [2026-PREPRINT]
+SkillDAG, arXiv:2606.03056 [2026-PREPRINT]
+SkillOps, arXiv:2605.13716 [2026-PREPRINT]
+Cho et al., SkillRet, arXiv:2605.05726 [2026-PREPRINT]
+Diversity-Aware Skill Routing, arXiv:2609.05824 [2026-PREPRINT]
+SkillResolve-Bench, arXiv:2606.10388 [2026-PREPRINT]
+Gao et al., Tool Graph Retriever, arXiv:2508.05152
+SING, arXiv:2606.16591 [2026-PREPRINT]
+HyperAgent, arXiv:2608.02650 [2026-PREPRINT]
+Zheng et al., SkillWeaver, arXiv:2504.07079
+Shi et al., Progent, arXiv:2504.11703
+Debenedetti et al., CaMeL, arXiv:2503.18813 [KB]
+SEAgent / Privilege Escalation, arXiv:2601.11893
+TRUSTDESC, arXiv:2604.07536
+Prompt Injection Attacks on Agentic Coding Assistants, arXiv:2601.17548
+Li et al., SkillsBench, arXiv:2602.12670; Han et al., SWE-Skills-Bench, arXiv:2603.15401 [Pointer]
+Liang et al., SSL-Repräsentation, arXiv:2604.24026 [Pointer]
+[KB] Kim et al., LLMCompiler (ICML 2024); Yao et al., τ-bench (pass^k); Debenedetti et al., AgentDojo (NeurIPS 2024); Mokhov et al., Build Systems à la Carte (ICFP 2018); Garcia-Molina & Salem, Sagas (1987); MCP Spec (modelcontextprotocol.io); Agent Skills Spec (agentskills.io); OpenTelemetry GenAI Semantic Conventions; SLSA/in-toto; OPA/Cedar.
+30. Final Artifact: Enterprise Retrieval-to-Execution Harness Architecture v0.1
+Komponente	WHY	INPUT → OUTPUT	INVARIANTS	FAILURE	SECURITY BOUNDARY	VERSIONING	VALIDATION	EVIDENCE
+A Retrieval Graph Contract	Prerequisite Gap	Skill Packages → typed graph (depends/conflicts/specializes/duplicates) mit confidence, source, build-version	Kanten nie ausführbar; jede Kante hat Provenance	fehlende Kante → DEPENDENCY_MISSING zur Laufzeit	Lesend; keine Rechte	Graph-Hash + Build-Seed/Modell	Edge P/R gegen Execution-Log	GoS, SkillDAG (Preprint)
+B Skill Capability Contract	Autoritätsobjekt statt Prosa	Package → contract.yaml	Digest über Body+Contract; Permissions explizit	Contract-Verletzung → Quarantäne	Publisher-Signatur	SemVer + Digest	Schema + Description/Code-Konsistenz	GoS-Records, SkillRouter (Body), Engineering
+C Contract Resolver	Das „?"	Bundle+Contracts+State+Tools+Preset → CapabilityIR	Deterministisch bei fixem Snapshot; nur Skills mit Contract; Konflikte blockieren	UNRESOLVABLE → Fallback ReAct (gated) oder Escalate	Kein Netzwerkzugriff; kein Side-Effect	Resolver-Version im Manifest	Hash-Determinismus-Test	GraSP Compile (Preprint), Analogien
+D Execution Manifest / IR	Reproduzierbarkeit, Audit	CapabilityIR + Grants → Manifest+hash	Immutable nach Authorize	—	Einziges Artefakt, das Rechte referenziert	manifest_version, graph_hash	JSON-Schema	Engineering + GraSP-Struktur
+E Execution Graph Semantics	Ordnung, Parallelität, Local Repair	Manifest → Run	DAG azyklisch; Node nur mit Grant; state_writes disjunkt oder geordnet	Failure-Klassen §12	Runtime Gate pro Call	Manifest-gebunden	Pre/Post pro Node	GraSP, LLMCompiler [KB]
+F State Transition Contract	Drift-/Race-Vermeidung	deklarierte reads/writes	Epoch-Snapshot beim Bind; Write nur deklariert	STATE_DIVERGENCE	Procedural Memory read-only zur Laufzeit	state_epoch	Konsistenzcheck	GraSP state edges, Memory-Poisoning [KB]
+G Authorization Contract	Discovery ≠ Permission	Manifest → Grants (Decision Log)	Kein Side-Effect ohne Grant; LLM darf Policy nur narrowen	AUTHORIZATION_DENIED / POLICY_BLOCK	Policy Engine außerhalb LLM-Trust	policy_version	Unauthorized-Action-Suite	Progent, SEAgent (Grenzen)
+H Validation Contract	Node + E2E	Outputs → verdict	deterministische Validatoren vor LLM-Gradern	VALIDATION_FAILED	Validatoren sandboxed	validator_version	Validator P/R	GraSP, SkillWeaver (Verifier-Kritikalität)
+I Failure/Retry/Rollback	Bounded Recovery	Failure-Klasse → Aktion	Retry nur idempotent; Rollback nur mit Handler; Budget	UNRECOVERABLE → Escalate	Rollback braucht eigenen Grant	im Manifest	Retry-Amplification	Engineering (Saga), GraSP Repair
+J Trace/Observability	Audit	Run → Spans + Manifest-Ref	Jeder Span referenziert node_id + grant	—	PII-Redaktion	OTel semconv version	Vollständigkeitscheck	OTel [KB]
+K Version/Compatibility	Reproduzierbarkeit	alle Artefakte → Snapshot	Digest-Pinning; Snapshot rekonstruiert Manifest	—	—	—	Structural-Repro-Test	Lockfile-Analogie; GoS-Variance
+L Graph-Evolution Contract	Nutzen ohne Drift	Execution-Logs → Edge-Proposals → gated release	Kein Runtime-Commit; kontrafaktische Confidence	Regression → Rollback auf Graph-Version	Evolution-Queue außerhalb Runtime	graph version	Edge P/R, Regression-Suite	SkillDAG propose-commit, SkillOps
+Falsifikations-Check (Quality Gate 1–17, Kurzfassung)
+Retrieval ohne Graph? Ja, bis 80K für Single-Skill-Routing (SkillRouter); Graph nötig, wenn Dependency-Completeness entscheidend ist → Graph ist optional, Resolver nicht.
+Reine State Machine statt DAG? Ja für Approval-lastige, sequentielle Domänen → DAG nur bei echtem Parallelismus.
+IR wirklich nötig? Ohne IR keine Structural Reproducibility und keine manifest-weite Authorization → IR bleibt Kernel, aber minimal (§17-Felder).
+Contracts zu komplex? 15 Felder minimal; Rest optional. Nachweis für Reliability-Gewinn einzelner Felder fehlt — bewusst als Engineering-Ableitung markiert.
+Graph Evolution mehr Drift als Nutzen? Unbekannt → nur gated, außerhalb Kernel.
+Planner statt Resolver? CaMeL-Bruch und GraSP-Motivation sprechen dagegen; Planner darf vorschlagen, Resolver bindet.
+Kernel (invariant): Contract-Schema, Manifest-Schema, Lifecycle-SM, Failure-Klassen, Policy-Gate-Interface. Alles andere — Graph-Retrieval, DAG-Parallelismus, Evolution — ist complexity-gated Extension.
+

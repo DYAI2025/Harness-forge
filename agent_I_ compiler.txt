@@ -1,0 +1,1334 @@
+# ENTERPRISE CAPABILITY CONTRACT + INTERMEDIATE REPRESENTATION + COMPILER ARCHITECTURE
+## Research Report v0.1
+
+---
+
+## 1. EXECUTIVE RESEARCH CONCLUSION
+
+### 1.1 Robust findings (highest confidence)
+
+**F1 — The boundary between "probabilistic discovery" and "deterministic execution" is enforceable, not merely rhetorical.**
+Direct empirical evidence from LLM-agent security research demonstrates that inserting a *deterministic* enforcement layer between LLM decisions and tool execution measurably reduces harm. Progent represents privilege as a security policy consisting of symbolic rules over tool names and arguments; these rules specify which tool calls are allowed for task completion and which unnecessary ones are blocked for security, and every tool call is checked against such a policy through a deterministic procedure, enforcing the principle of least privilege. Ablation-style evaluation shows that this deterministic layer reduces attack success rate from 41.2% to 2.2% on the AgentDojo benchmark while preserving high utility. This is EMPIRICAL_RESULT for the *existence* of the boundary; it is not yet evidence for a *specific contract schema*.
+
+**F2 — Deterministic policy enforcement must be *dynamic* (per-step, context-sensitive), not static.**
+Progent maintains a per-step policy that evolves as new information arrives: at step i, the gating privilege control policy is Pi, which enumerates exactly which tool calls the agent may issue at that step. The initial policy P1 is derived from the user's task, and an LLM-based updater reasons about both task context and execution context. Critically, updates are constrained: each proposed update is determined by an SMT solver to be either a narrowing (applied automatically) or an expansion (requiring explicit approval), ensuring that the agent's effective action space can only shrink without approval (monotonic confinement). This is a **direct empirical + partial formal result**: LLMs may *propose*, but only bounded, formally analyzable transformations may execute without human approval.
+
+**F3 — Existing capability protocols (MCP) provide identity and I/O schemas but explicitly do *not* provide semantic contracts, effect declarations, or authorization semantics.**
+The MCP protocol allows servers to expose tools that can be invoked by language models; tools enable models to interact with external systems, and each tool is uniquely identified by a name and includes metadata describing its schema. But MCP itself explicitly notes that tools represent arbitrary code execution and must be treated with appropriate caution; in particular, descriptions of tool behavior such as annotations should be considered untrusted, unless obtained from a trusted server. Authorization is layered *on top* via a separate spec: the MCP Authorization specification provides a structured method to provide OAuth2-based access control for tool invocation, helping enforce least privileges, user-specific scopes, and multi-tenant separation via Protected Resource Metadata declaring supported scopes. **Implication:** MCP is a *transport + discovery* protocol. It is *not* a Capability Contract in the sense this report requires. Any Enterprise Harness needs a contract layer *above* MCP.
+
+**F4 — "Skills" in the current agent ecosystem are code-and-doc bundles, not typed semantic contracts.**
+"Skill" has emerged as a higher-level capability encapsulation distinct from atomic tools, designed to support multi-step, cross-domain task solving; Anthropic formally introduced agent skills defining them as structured multi-file packages composed of workflow instructions, executable scripts, and domain reference files. Skill packages like each synthesized API includes a function signature, implementation, documentation, prerequisite state, and a usage log recording previous executions carry *some* semantic metadata (prerequisite state), but the primary evaluation criterion in current research is executability, not contract-conformance. A revised skill must pass a check before it is trusted as future capability; SkillWeaver constructs web-agent skills as APIs and hones them through practice, generated tests, and documentation updates—useful evidence, though weaker than full semantic verification since passing tests may only show that a function avoids immediate execution failure. **This is a direct citation-supported gap**: the field itself acknowledges that test-passing ≠ semantic validation.
+
+**F5 — Step-level runtime guardrails add real safety value but do not remove the need for compile-time analysis.**
+TS-Flow reduces harmful tool invocations of ReAct-style agents by 65% on average and improves benign task completion by approximately 10% under prompt injection attacks. However, existing guardrail systems for LLM agents primarily focus on static content moderation or rely on complete action plans, lacking the ability for real-time, step-level intervention before unsafe tool execution. Runtime step-level guardrails are *complementary to*, not a *replacement for*, compile-time contract validation — they are the last line of defense against emergent, context-derived unsafe behavior.
+
+### 1.2 Robust *non-findings*
+
+- **No direct empirical evidence** in the retrieved literature identifies a *specific* minimum contract schema (fields, types) that is empirically necessary for enterprise reliability. Existing work optimizes for either (a) security/privilege at runtime (Progent, ToolSafe) or (b) skill acquisition/composition (SkillWeaver, ASI). The *contract-field ablation* this report requires is **ABLATION_EVIDENCE_MISSING**.
+- **No direct empirical evidence** in the retrieved literature validates a multi-stage IR (Logical → Physical) for agent harnesses. Any recommendation here is INFERENCE from compiler engineering and database query planning.
+- **No empirical evidence** exists for a specific effect-system taxonomy in agent harnesses. Effect systems are transferred from PL theory as ENGINEERING_PRACTICE + INFERENCE, not as validated agent practice.
+- **No head-to-head study** in the retrieved literature compares "compiled harness" vs. "state-machine-only harness" vs. "ReAct + guardrails" on the same benchmark under identical adversarial + reliability conditions. This is an **OPEN_QUESTION**.
+
+### 1.3 Bottom-line architectural recommendation (with epistemic caveat)
+
+The **smallest defensible architecture** consists of five *separable* but *not necessarily distinct-artifact* layers:
+
+1. **Discovery Layer** (probabilistic, LLM-driven, MCP-based)
+2. **Capability Contract Layer** (typed I/O + declared effects + permission-requirements; NOT permission grants)
+3. **Single normalized IR** (only split into Logical/Physical for Profile C workloads — see §9)
+4. **Compiler/Resolver** with a small mandatory pass set (§13) and optional passes gated by risk profile
+5. **Runtime with JIT authorization + step-level guardrail + postcondition validator**
+
+The *degree* to which each layer is materialized should be gated by **risk profile** (see §34): low-risk read-only agents do not need a compiled manifest; high-risk side-effectful agents *do*. Uniformly applying the full architecture to every capability is **enterprise bloat** and creates a false sense of security ("security theater") without measurable benefit.
+
+**Confidence:** MEDIUM. The building blocks (deterministic enforcement, typed I/O, provenance, JIT authorization, guardrails) each have independent evidence; their combination as recommended here is DESIGN_RECOMMENDATION, not empirically validated end-to-end.
+
+---
+
+## 2. SOURCE QUALITY MAP
+
+| ID | Source | Date | Peer-review | Relevance | Evidence strength | Depends on |
+|----|--------|------|-------------|-----------|-------------------|------------|
+| S1 | Progent (arXiv 2504.11703, v3) | 2026 | Preprint | Direct (privilege control, deterministic enforcement, monotonic confinement) | STRONG for the *mechanism*; MEDIUM for generalization | AgentDojo, ASB, AgentPoison benchmarks |
+| S2 | ToolSafe / TS-Flow (arXiv 2601.10156) | 2026 | ACL 2026 Findings (peer-reviewed) | Direct (step-level runtime guardrail) | STRONG for step-level benefit; MEDIUM for enterprise applicability | AgentHarm, ASB, AgentDojo |
+| S3 | MCP Specification (modelcontextprotocol.io) | 2026-07-28 | Standard (community) | Direct (capability discovery, transport, authorization extension) | STANDARD-level | OAuth 2.1, JSON-RPC 2.0 |
+| S4 | MCP Authorization spec review (Black Hills InfoSec) | 2026 | Vendor/practitioner | Direct (OAuth flows for MCP) | ENGINEERING_PRACTICE | S3 |
+| S5 | SkillWeaver (arXiv 2504.07079) | 2025 | Preprint | Direct (skill-as-API abstraction) | STRONG for skill synthesis; WEAK for contract semantics | WebArena, Mind2Web |
+| S6 | Agent Skills survey (arXiv 2605.07358) | 2026 | Preprint | Direct (skill validation is under-specified) | MEDIUM (survey) | S5 and others |
+| S7 | ToolSafety dataset (EMNLP 2025) | 2025 | Peer-reviewed | Direct (fine-tuning for tool safety) | MEDIUM (fine-tuning artifact) | — |
+| PL1 | Effect systems (Lucassen & Gifford 1988; Marino & Millstein; Koka; Eff) | pre-cutoff | Peer-reviewed / textbook | Analogical → adapted | FORMAL_RESULT (in PL); INFERENCE for agents | — |
+| PL2 | Design-by-Contract (Meyer / Eiffel) | pre-cutoff | Textbook | Analogical | ENGINEERING_PRACTICE | — |
+| PL3 | Refinement types (Liquid Haskell, F*) | pre-cutoff | Peer-reviewed | Analogical | FORMAL_RESULT (in PL); INFERENCE for agents | — |
+| PL4 | Capability-based security (Miller et al., seL4 papers) | pre-cutoff | Peer-reviewed | Direct-analogy | STRONG (in OS); INFERENCE for agents | — |
+| DS1 | Temporal / durable execution literature (Cadence, AWS Step Functions docs) | ongoing | Vendor/engineering | Direct (workflow durability) | ENGINEERING_PRACTICE | — |
+| DS2 | Sagas (Garcia-Molina & Salem 1987) | pre-cutoff | Peer-reviewed | Direct (compensation model) | FORMAL_RESULT | — |
+| DS3 | Optimistic concurrency (Kung & Robinson 1981) | pre-cutoff | Peer-reviewed | Direct (state versioning) | FORMAL_RESULT | — |
+| SC1 | SLSA framework (slsa.dev) | ongoing | STANDARD | Direct (build provenance) | STANDARD | — |
+| SC2 | in-toto (Torres-Arias et al.) | pre-cutoff | Peer-reviewed | Direct (supply-chain attestation) | FORMAL_RESULT + STANDARD | — |
+| POL1 | Cedar (Amazon) | 2023+ | Peer-reviewed (OOPSLA) | Direct (policy-as-code) | STANDARD + FORMAL | — |
+| POL2 | OPA/Rego (CNCF) | ongoing | STANDARD | Direct (policy-as-code) | STANDARD | — |
+| POL3 | Google Zanzibar (Pang et al., USENIX ATC 2019) | 2019 | Peer-reviewed | Direct (ReBAC) | PEER_REVIEWED_RESULT | — |
+
+**Notes on epistemic quality:** All Progent/ToolSafe results are on *benchmarks* (AgentDojo, ASB, AgentPoison, AgentHarm). These benchmarks are constructed adversarial suites, not natural enterprise traffic. Generalization to unfamiliar domains is INFERENCE.
+
+---
+
+## 3. TERMINOLOGY / ONTOLOGY
+
+To eliminate the confounding of terms across the retrieved sources:
+
+- **Tool** — a concrete invocable procedure exposed by a server (per MCP: tools enable models to interact with external systems; each tool is uniquely identified by a name and includes metadata describing its schema). Physical.
+- **Skill** — a *packaged* higher-level capability: structured multi-file packages composed of workflow instructions, executable scripts, and domain reference files. Bundles tools + prompts + code. Physical.
+- **Capability** — an *abstract* semantic action ("send-invoice-email", "read-account-balance"). May be implemented by one or more skills/tools. Logical.
+- **Capability Contract** — a machine-readable *specification* of a Capability: identity, typed I/O, preconditions, postconditions, declared effects, permission requirements, failure semantics. **Not** the code; not the grant of permissions.
+- **Logical IR (CapabilityIR)** — a normalized, typed, resolver-produced structure describing *what* will be composed and *what* dependencies hold, before physical binding.
+- **Physical IR (ExecutionIR)** — a lowered IR after tool/runtime binding, topology selection, concurrency scheduling, and validator attachment.
+- **Manifest (ResolvedExecutionManifest)** — a *frozen, canonicalized, hashed, versioned* run instance: pinned contract digests, pinned tool digests, snapshot of resolved policies, embedded validator references, expected state versions. Immutable once frozen.
+- **Plan** — the *sequence of intended actions*; in this architecture, a plan is the *content* of the Logical IR, not a separate artifact.
+- **Execution Graph** — the runtime instantiation of the Physical IR; nodes are running or completed activities.
+- **State Machine** — the durable execution model that owns run state, checkpoints, retries, and compensations.
+- **Policy** — a decision procedure (PDP) that answers `{principal, action, resource, context} → decide`. Not embedded in the manifest; *referenced* by policy_snapshot_id.
+- **Effect** — a *declared* class of world-change a capability may produce (READ_STATE, WRITE_STATE, NETWORK, TRANSFER_VALUE, DELETE, …). Static, contract-level.
+- **Permission** — a *credential-bound authorization* to perform an effect on a resource. Runtime, principal-bound.
+
+**Key distinction (H5 confirmed):** *Effects are declared by the contract*; *permissions are granted by the principal's authority*. An effect declaration is a *promise about what the code may do*; a permission is a *grant that says the doer is allowed to do it*. They must be separate fields and separate lifecycles.
+
+---
+
+## 4. CLAIM–EVIDENCE–COUNTEREVIDENCE MATRIX
+
+| # | Claim | Type | Direct Evidence | Counter-evidence / Limits | Confidence |
+|---|-------|------|-----------------|---------------------------|------------|
+| C1 | A deterministic enforcement layer between LLM and tool reduces attack success | EMPIRICAL_RESULT | Progent reduces attack success from 41.2% to 2.2% on AgentDojo | Benchmark-specific; unknown enterprise generalization; policies may under-approximate legitimate use | HIGH (for benchmarks) |
+| C2 | LLM-generated policies must be constrained by formal invariants (monotonic confinement) to be safe | FORMAL_RESULT + EMPIRICAL_RESULT | SMT-checked narrowing vs expansion; deterministic update prevents silent privilege escalation even with adversarial inputs | Requires SMT-decidable policy DSL; policy expressiveness limited | HIGH |
+| C3 | Tool descriptions cannot be trusted as authority sources | STANDARD | Descriptions of tool behavior such as annotations should be considered untrusted, unless obtained from a trusted server | — | HIGH |
+| C4 | Step-level runtime guardrails materially improve safety | EMPIRICAL_RESULT | TS-Flow reduces harmful tool invocations by 65% on average and improves benign task completion by 10% under prompt injection | Guardrail latency; false-positive impact on utility; benchmark-bounded | MEDIUM-HIGH |
+| C5 | Test-passing skills ≠ semantically-valid skills | PEER_REVIEWED_RESULT (survey observation) | SkillWeaver hones skills through practice, generated tests, and documentation updates—useful evidence, though weaker than full semantic verification since passing tests may only show that a function avoids immediate execution failure | — | HIGH |
+| C6 | Typed I/O is minimum for composition | INFERENCE from PL + STANDARD (MCP mandates schemas) | Each tool has a name, description, input schema, and optional output schema | No head-to-head "typed vs untyped" agent composition study | HIGH |
+| C7 | A single IR is insufficient for high-risk workloads | INFERENCE from compiler & DB engineering | Analogy to LLVM (multi-level IR) and to Volcano/Cascades query optimizers | No agent-domain study; may be over-engineering | MEDIUM |
+| C8 | Effect systems are directly applicable to agent contracts | INFERENCE from PL | Effect systems (Lucassen/Gifford; Koka) formally track effect propagation | No empirical study on LLM-agent effect declarations | MEDIUM |
+| C9 | State read/write sets enable static race detection | FORMAL_RESULT (from PL/DB) | Standard result in concurrency analysis | Not yet validated for agent workloads | MEDIUM |
+| C10 | JIT authorization is safer than plan-time authorization | INFERENCE from OS capability security + STANDARD | Authorization controls are required to properly define trust boundaries; MCP Authorization uses OAuth2 for tool invocation, enforcing least privileges, user-specific scopes, and multi-tenant separation | Runtime overhead; requires low-latency PDP | HIGH |
+| C11 | Reproducibility requires hashing contract + tool + policy + state snapshot | INFERENCE from SLSA/in-toto | SLSA level-3 requires provenance of build inputs | No agent-domain replay study | MEDIUM-HIGH |
+| C12 | ONE monolithic manifest is worse than staged IRs for high-risk workloads | DESIGN_RECOMMENDATION | Analogy only | — | LOW-MEDIUM |
+| C13 | Policy update should be bounded by monotonic invariants (only narrow, or require approval to expand) | FORMAL+EMPIRICAL | SMT solver determines each proposed update to be either a narrowing (applied automatically) or an expansion (requiring explicit approval) | Applies to Progent-style DSL; may not generalize to richer policy languages | HIGH |
+
+---
+
+## 5. CAPABILITY CONTRACT FINDINGS
+
+### 5.1 What existing standards give us
+- MCP: each tool has a name, description, input schema, and optional output schema — this is **identity + interface**, nothing more.
+- MCP Authorization: Protected Resource Metadata (PRM) is a well-known "prm.json" file that declares supported scopes, authorization methods, token introspection, and audience rules; role separation allows the resource server that exposes tools and the authorization server to be fully decoupled — this is **permission-requirement metadata** at the *server* level, not per-capability.
+- SkillWeaver: each synthesized API includes a function signature, implementation, documentation, prerequisite state, and a usage log recording previous executions — this hints at **preconditions** ("prerequisite state") but not effects, invariants, or postconditions.
+
+### 5.2 What is missing (INFERENCE from PL, DS, Sec)
+- **Effect declarations** — no MCP/Skills field
+- **Postconditions / invariants** — no MCP/Skills field
+- **Idempotency / retry semantics** — no MCP/Skills field
+- **State read/write sets** — partial (SkillWeaver "prerequisite state")
+- **Failure classification** — no field
+- **Provenance / digest / signature** — no field in MCP tool metadata; must be added at the packaging layer (SLSA-style)
+- **Data classification / secret requirements** — no field
+
+### 5.3 Findings-summary
+
+1. Current standards give us a *transport-level* contract (name + schemas + coarse OAuth scopes). They do *not* give us a *semantic* contract sufficient to prove composition safety.
+2. The gap must be filled by an *overlay contract* — the Enterprise Capability Contract — which references the MCP tool identity but adds effect, precondition, postcondition, state, failure, and validator semantics.
+3. Because tool annotations should be considered untrusted unless obtained from a trusted server, contract fields must be **signed by a trusted authority** (publisher + registry), not asserted by the tool server itself.
+
+---
+
+## 6. CONTRACT FIELD EVIDENCE MATRIX
+
+Notation:
+- MW = Mandatory when: LOW / MED / HIGH risk profile
+- CR = Compile-time / Runtime
+- CONF = Confidence in necessity
+
+| Field | Purpose | Evidence | CONF | CR | MW | Unnecessary when | Falsifier |
+|-------|---------|----------|------|----|----|----|-----------|
+| `identity.capability_id` | Stable reference | STANDARD (MCP name) | HIGH | Compile | ALL | never | Ambiguous refs cause resolution failures |
+| `identity.version` | Compatibility & reproducibility | ENGINEERING_PRACTICE (semver, Cargo, npm) | HIGH | Compile | MED, HIGH | Fully-centralized single-version registry | Silent behavior drift under "skill@1.2.3" |
+| `identity.digest` | Reproducibility, supply-chain integrity | SC1/SC2 (SLSA/in-toto) | HIGH | Compile | MED, HIGH | Non-audited playground | Bit-drift; substitution attack |
+| `identity.publisher` | Trust anchor | INFERENCE + STANDARD | HIGH | Compile | MED, HIGH | LOW | Untrusted-source acceptance |
+| `identity.signature` | Non-repudiation | SC2 (in-toto) | HIGH | Compile | HIGH | LOW | Impersonation attacks |
+| `discovery.description` | Retrieval | S3 (MCP) | HIGH | Compile (retrieval-only) | ALL | never | (retrieval only — cannot be authority; C3) |
+| `discovery.intents` | Retrieval reranking | ENGINEERING_PRACTICE | MEDIUM | Compile | HIGH | Small registries | Retrieval recall low |
+| `discovery.embedding_ref` | Retrieval | ENGINEERING_PRACTICE | MEDIUM | Compile (retrieval-only) | HIGH | Small registries | — |
+| `interface.input_schema` | Type check | STANDARD (JSON Schema) | HIGH | Compile | ALL | never | Runtime type errors |
+| `interface.output_schema` | Type check downstream binding | STANDARD | HIGH | Compile | ALL | never | Downstream binding fails silently |
+| `interface.artifact_types` | Content-addressed data flow | INFERENCE (Bazel, Nix) | MED | Compile | HIGH | Ephemeral values only | Cache miss / non-determinism |
+| `composition.requires` | Dependency closure | INFERENCE (package managers) | HIGH | Compile | MED, HIGH | Trivial single-cap flows | Undeclared dependencies |
+| `composition.provides` | Alternatives / substitution | INFERENCE | MED | Compile | HIGH | LOW | — |
+| `composition.conflicts_with` | Exclusion | INFERENCE | MED | Compile | HIGH | — | Incompatible caps co-selected |
+| `state.reads` | Race detection, freshness | INFERENCE (H7); partial evidence from SkillWeaver "prerequisite state" | MED | Compile+Runtime | MED, HIGH | Pure functions | Undetected read-of-stale |
+| `state.writes` | Write-write conflict detection | INFERENCE (H7, DS3 optimistic concurrency) | MED-HIGH | Compile+Runtime | MED, HIGH | Pure functions | Undetected concurrent overwrite |
+| `state.expected_revision` | Optimistic concurrency (CAS) | FORMAL (DS3) | HIGH (when state.writes present) | Runtime | HIGH | Read-only | Lost updates |
+| `conditions.preconditions` | Static + runtime gate | ENGINEERING_PRACTICE (Design-by-Contract) | MED-HIGH | Compile+Runtime | MED, HIGH | LOW read-only | Executed in unsafe state |
+| `conditions.postconditions` | Validation | ENGINEERING_PRACTICE (DbC) | MED-HIGH | Runtime | MED, HIGH | LOW | Silent semantic failure |
+| `conditions.invariants` | Multi-step safety | INFERENCE | MED | Runtime | HIGH | LOW | Cross-cap invariant violation |
+| `effects[]` (categorical: READ_STATE, WRITE_STATE, NETWORK, TRANSFER_VALUE, DELETE, DEPLOY, CHANGE_PERMISSION, ACCESS_SECRET, EXPOSE_DATA, IRREVERSIBLE, …) | Policy preflight; approval routing | INFERENCE from effect systems (PL1) | HIGH for HIGH risk | Compile | MED, HIGH | LOW pure/read-only | Undetected side effects; H14 |
+| `security.permissions_required` | JIT authorization request template | Direct: MCP Authorization OAuth scopes (S3/S4) | HIGH | Compile→Runtime | ALL | none | Over-privileged execution |
+| `security.principal_requirements` | Delegation constraints | INFERENCE (Zanzibar/ReBAC) | MED | Runtime | HIGH | LOW | Wrong-principal execution |
+| `security.data_classification` | Info-flow / DLP | INFERENCE (info-flow types) | MED | Compile+Runtime | HIGH | LOW | Data exfiltration |
+| `security.secret_requirements` | Credential provisioning | ENGINEERING_PRACTICE | HIGH | Runtime | MED, HIGH | LOW | Missing-secret at run |
+| `execution.tool_binding_ref` | Physical binding | Direct: MCP tool ref | HIGH | Compile | ALL | — | Unresolved execution target |
+| `execution.timeout_ms` | Failure containment | ENGINEERING_PRACTICE | HIGH | Runtime | ALL | — | Hung runs |
+| `execution.idempotency` (KEY, KEY_SCOPE, NONE) | Safe retry | ENGINEERING_PRACTICE (durable execution) | HIGH | Compile→Runtime | MED, HIGH | LOW read-only | Duplicate side effects on retry |
+| `execution.retry_policy` | Recovery | ENGINEERING_PRACTICE | MED-HIGH | Runtime | ALL | — | Unsafe retry (C9-adjacent) |
+| `execution.concurrency` (safe_parallel / serialize_on) | Scheduling | INFERENCE (DS) | MED | Compile | MED, HIGH | — | Race conditions |
+| `validation.schema_validator_ref` | Output shape | STANDARD | HIGH | Runtime (post) | ALL | never | Malformed output propagates |
+| `validation.semantic_validator_ref` | Business validation | ENGINEERING_PRACTICE | MED-HIGH | Runtime (post) | HIGH | LOW | Structural-only checks miss semantic errors |
+| `validation.human_gate` | Approval | ENGINEERING_PRACTICE + Progent expansion approval (C13) | HIGH for irreversible | Runtime | HIGH | LOW | Silent execution of irreversible effect |
+| `failure.classes[]` | Recovery routing | INFERENCE | MED-HIGH | Compile→Runtime | MED, HIGH | LOW | Poor recovery decisions |
+| `failure.compensation_ref` | Saga compensation | FORMAL (DS2) | HIGH for WRITE effects | Runtime | HIGH | Read-only | Partial-failure state |
+| `operations.telemetry_schema` | Observability | STANDARD (OpenTelemetry) | MED-HIGH | Runtime | ALL | — | Undiagnosable failures |
+| `operations.cost_hints` | Budget enforcement | ENGINEERING_PRACTICE | LOW-MED | Compile | HIGH | LOW | Cost overrun |
+| `release.lifecycle_state` (draft/beta/stable/deprecated) | Governance | ENGINEERING_PRACTICE | MED | Compile | MED, HIGH | LOW | Use of deprecated caps in prod |
+| `release.eval_suite_ref` | Behavioral reproducibility | INFERENCE (F4/C5) | MED | Offline | HIGH | LOW | Behavior drift undetected |
+| `compatibility.abi_version` / `contract_schema_version` | Contract evolution | ENGINEERING_PRACTICE | HIGH | Compile | ALL | — | Contract-schema-drift |
+
+**Classification legend (per stream 1):**
+- FORMALLY_REQUIRED (for stated invariant): identity, input/output schema, effects (for effect-analysis), state.writes (for race detection), idempotency (for retry), expected_revision (for CAS)
+- SECURITY_REQUIRED: permissions_required, publisher/signature, human_gate for IRREVERSIBLE effects, data_classification, secret_requirements
+- REPRODUCIBILITY_REQUIRED: identity.digest, version, contract_schema_version
+- STRONGLY_RECOMMENDED: preconditions, postconditions, compensation_ref, telemetry_schema
+- CONTEXT_DEPENDENT: intents, embedding_ref, cost_hints, concurrency
+- EXPERIMENTAL: semantic_validator_ref (still ad hoc), invariants (multi-cap)
+
+---
+
+## 7. CONTRACT ABLATION DESIGN
+
+Since **no direct empirical field-ablation study exists in the retrieved literature** (ABLATION_EVIDENCE_MISSING), the following is a **methodologically sound proposed ablation plan**:
+
+### 7.1 Setup
+- Fixed model, fixed retriever, fixed benchmark suite (AgentDojo + ASB + AgentHarm + a custom enterprise stateful-workflow suite)
+- Fixed capability *implementations*, varying only the *declared contract fields*
+- Dependent metrics:
+  - Attack Success Rate (ASR), Benign Task Completion (BTC)
+  - Compile-time-detected error rate (per bug class)
+  - Runtime repair rate
+  - Replay-reproduction success rate
+
+### 7.2 Ladder
+
+| Rung | Adds | New machine decision enabled | Failure class newly prevented | Redundant with |
+|------|------|-------------------------------|-------------------------------|----------------|
+| C0 | description only | none (LLM-only reasoning) | none | — |
+| C1 | + typed I/O | Type-compatible composition | TYPE_MISMATCH, INPUT_UNBOUND | can subsume examples[] |
+| C2 | + requires/provides | Dependency closure | DEPENDENCY_UNSATISFIABLE, UNKNOWN_CAPABILITY | — |
+| C3 | + preconditions/postconditions | Static feasibility check; runtime validation | PRECONDITION_FAILED (early), POSTCONDITION_FAILED (caught) | some overlap with input_schema at boundary |
+| C4 | + effects | Policy preflight, approval routing, retry safety | EFFECT_NOT_ALLOWED, unsafe retry on non-idempotent effect | partially inferable from permissions_required (weak) |
+| C5 | + permissions_required | JIT authorization request generation, deny-fast | PERMISSION_UNRESOLVABLE, over-privileged execution | independent of effects (H5) |
+| C6 | + state reads/writes | Race detection, freshness enforcement | STATE_CONFLICT, STATE_STALE | independent |
+| C7 | + failure classification + compensation_ref | Automated recovery | COMPENSATION_FAILED (routed to human) | — |
+| C8 | + validators (schema, semantic, human_gate) | Deterministic postcondition enforcement | OUTPUT_INVALID, VALIDATOR_FAILED | schema partly redundant with output_schema |
+| C9 | + identity.version/digest/provenance/signature | Reproducibility, supply-chain integrity | Silent-drift; substitution | independent |
+| C10 | + full enterprise contract | Full lifecycle governance | (all above) | — |
+
+**Ablation-derived hypothesis (falsifiable):**
+- For **LOW-risk read-only agents**, C1+C2 (typed I/O + dependency closure) capture ≥90% of composition-safety wins.
+- For **MED-risk stateful workflows**, adding C3+C6 (pre/post + state R/W) yields the next largest safety delta.
+- For **HIGH-risk side-effectful workflows**, C4+C5+C7+C8+C9 are *each* independently required and none is redundant.
+
+**REVISION_TRIGGER:** If a controlled ablation shows C4 (effects) is fully derivable from C5 (permissions) in practice, H5 must be re-examined and effects may become derived/redundant.
+
+---
+
+## 8. INTERMEDIATE REPRESENTATION FINDINGS
+
+### 8.1 Function of an IR (from compiler practice)
+An IR exists to (a) decouple *what* from *how*, (b) enable *analysis passes* over a normalized structure, (c) make the artifact *hashable and reproducible*, and (d) provide a stable target for *lowering* toward one of many concrete runtimes.
+
+### 8.2 Required IR properties for an Enterprise Harness (INFERENCE from PL + DS)
+- **Typed** — nodes and edges carry type information for static checking
+- **Normalized / canonicalized** — same logical plan → same IR byte-string
+- **Immutable + hashable** — for reproducibility (SLSA-analogous)
+- **Serializable** (JSON/CBOR/protobuf) for durable execution replay
+- **Diffable** — for local repair and re-authorization decisions
+- **Policy-addressable** — every node has a stable ID that policies can reference
+- **Validator-friendly** — invariants can be checked by external tools (OPA/Cedar)
+- **Replayable** — deterministic reduction from IR+state → run
+
+### 8.3 The critical distinction — retrieval edges are NOT dependencies
+- A retrieval bundle may include Capability X because it *scored high semantically*.
+- This does **not** create a dependency. The IR must **prune retrieval-only edges** during normalization.
+- A **logical dependency** exists iff (a) an output of A is bound to an input of B, or (b) B's `state.reads` overlaps A's `state.writes`, or (c) an explicit control edge is present.
+- A **physical execution dependency** additionally reflects tool locality, resource ordering, batching.
+- An **authorization condition** is *not* a graph edge — it is a *gate on a node* (see §17).
+
+---
+
+## 9. IR LAYERING DECISION — one IR vs multiple?
+
+**Evidence status:** DESIGN_RECOMMENDATION (INFERENCE from compiler engineering and database query optimization). No agent-domain empirical study.
+
+### 9.1 Argument for a single IR
+- Simpler implementation
+- Fewer opportunities for translation bugs
+- Fewer artifacts to hash and version
+- Sufficient for the common case (LOW/MED risk)
+
+### 9.2 Argument for logical + physical
+- Optimization boundaries are cleanest (Volcano/Cascades pattern in DB systems)
+- Physical runtimes are *many* (Temporal, Step Functions, Argo, custom durable execution) — a Logical IR portable across them prevents lock-in
+- HIGH-risk workflows benefit from *separately auditable* logical intent vs execution plan
+- Local repair on physical IR does not require re-planning at logical level
+
+### 9.3 Recommendation (profile-gated)
+
+| Profile | Recommended IR layering |
+|---------|-------------------------|
+| A (LOW-risk read-only) | **Single normalized IR = "PlanIR"**. No physical layer; direct call. |
+| B (MED-risk stateful) | **Single CapabilityIR + a Manifest** (freeze/hash). Skip a separate Physical IR. |
+| C (HIGH-risk side-effectful) | **Logical CapabilityIR → Physical ExecutionIR → ResolvedExecutionManifest** — three layers, each hashed. |
+
+**Falsifier:** If a controlled study shows Profile C reliability is equivalent under a single-IR compiler, drop the physical layer.
+
+---
+
+## 10. PROPOSED LOGICAL IR
+
+```yaml
+CapabilityIR:
+  ir_version: "0.1"
+  task_ref: TaskRef            # hash of normalized task + input
+  nodes:
+    - id: n1                   # stable node id
+      capability_ref:
+        capability_id: "invoice.email.send"
+        version_range: ">=1.2.0 <2.0.0"     # resolver will pin
+      inputs:
+        to:      { source: TASK_INPUT, path: "$.recipient" }
+        amount:  { source: NODE_OUTPUT, node: n0, path: "$.total" }
+      declared_reads:  [ "invoice/{invoice_id}" ]
+      declared_writes: [ "email_log/{invoice_id}" ]
+      declared_effects: [ SEND_COMMUNICATION, WRITE_STATE ]
+      preconditions_ref: "cond://invoice.notPaid"
+      postconditions_ref: "cond://email.sent"
+      failure_class_hint: RECOVERABLE_COMPENSATABLE
+  edges:
+    - from: n0, to: n1, type: DATA_DEPENDENCY, binding: "$.total"
+    - from: n0, to: n1, type: STATE_DEPENDENCY, resource: "invoice/{invoice_id}"
+  approval_gates:
+    - node: n1, reason: "SEND_COMMUNICATION effect"
+  policy_scopes_requested:      # not decisions — *requests*
+    - { node: n1, permissions_required: ["invoice:read", "email:send"] }
+  metadata:
+    resolver_version: "..."
+    contract_schema_version: "0.1"
+```
+
+**Not present** in the Logical IR (by design): concrete tool endpoints, concrete credentials, PDP decisions, retry counts, physical scheduling, telemetry sinks.
+
+---
+
+## 11. PROPOSED PHYSICAL / EXECUTION IR (Profile C only)
+
+```yaml
+ExecutionIR:
+  ir_version: "0.1"
+  logical_ir_hash: sha256:...
+  runtime_target: "temporal@1.24"      # or step-fn / argo / custom
+  nodes:
+    - id: n1
+      binding:
+        tool_ref: "mcp://email-server-prod/tool/send"
+        tool_digest: sha256:...
+        server_prm_ref: "prm.json@sha256:..."     # OAuth PRM snapshot
+      idempotency_key_source: "n1_key = hash(task_id || n1_inputs)"
+      timeout_ms: 15000
+      retry:
+        policy: "safe_retry_only_if_idempotent"   # compiler-enforced
+        max_attempts: 3
+      concurrency_class: "serialize_on: invoice/{invoice_id}"
+      validators:
+        pre:   [ "schema://email.send.input" ]
+        post:  [ "schema://email.send.output", "semantic://email.deliveryReceipt" ]
+      compensation_ref: "cap://email.send.compensate"
+  scheduler_plan:
+    ordering: [ [n0], [n1] ]     # topological levels
+    barriers: [ approval_gate_n1 ]
+  observability:
+    otel_scope: "ent.harness.run"
+  authorization_binding:
+    node_n1:
+      pdp_ref: "cedar://ent-pdp"
+      request_template:                # JIT-instantiated at runtime
+        principal: RUN_PRINCIPAL
+        action: "email:send"
+        resource: "invoice/{invoice_id}"
+        context_keys: [ "run_id", "task_hash", "state_revision" ]
+```
+
+**Manifest** = ExecutionIR + resolved policy snapshot ref + resolved state snapshot ref + canonicalized-and-hashed. Immutable once frozen.
+
+---
+
+## 12. COMPILER / RESOLVER ARCHITECTURE
+
+```
+                 ┌────────────────────────────────────────────────┐
+ TASK ──────────>│  PROBABILISTIC PLANE                           │
+                 │  Retriever → Candidate Contracts               │
+                 └───────────┬────────────────────────────────────┘
+                             │  ContractBundle (candidate set)
+                             ▼
+                 ┌────────────────────────────────────────────────┐
+                 │  SEMANTIC BOUNDARY                             │
+                 │  Contract Loader → CAS → Signature Verify      │
+                 └───────────┬────────────────────────────────────┘
+                             │  Verified ContractBundle
+                             ▼
+                 ┌────────────────────────────────────────────────┐
+                 │  RESOLVER  (deterministic)                     │
+                 │   Normalize → Identity Pin → Version Resolve   │
+                 │   → Dep Closure → Conflict Detect              │
+                 └───────────┬────────────────────────────────────┘
+                             │  ResolvedCapabilitySet
+                             ▼
+                 ┌────────────────────────────────────────────────┐
+                 │  LOGICAL COMPILER                              │
+                 │   Type Check → I/O Bind → State Bind           │
+                 │   → Effect Analysis → Precondition Analysis    │
+                 │   → Graph Validation → CapabilityIR            │
+                 └───────────┬────────────────────────────────────┘
+                             │  CapabilityIR (typed, hashable)
+                             ▼
+                 ┌────────────────────────────────────────────────┐
+                 │  POLICY PREFLIGHT                              │
+                 │   PDP snapshot check: can this SHAPE run?      │
+                 │   (context-independent policy questions only)  │
+                 └───────────┬────────────────────────────────────┘
+                             │  CapabilityIR + policy_snapshot_ref
+                             ▼
+                 ┌────────────────────────────────────────────────┐
+                 │  PHYSICAL COMPILER  (Profile C only)           │
+                 │   Tool Bind → Idempotency Analysis             │
+                 │   → Topology → Validator Attach                │
+                 │   → Failure Lowering → Canonicalize → Hash     │
+                 └───────────┬────────────────────────────────────┘
+                             │  ResolvedExecutionManifest (immutable)
+                             ▼
+                 ┌────────────────────────────────────────────────┐
+                 │  ENFORCEMENT PLANE                             │
+                 │   State refresh → Precondition check → JIT-Auth│
+                 │   → Execute (with step-guardrail)              │
+                 │   → Postcondition validate                     │
+                 │   → Commit / Compensate / Escalate             │
+                 └────────────────────────────────────────────────┘
+```
+
+---
+
+## 13. COMPILER PASS TABLE
+
+| # | Pass | Input | Output | Deterministic? | LLM allowed? | Validation | Failure |
+|---|------|-------|--------|----------------|--------------|------------|---------|
+| 1 | NORMALIZE | Raw candidates | Canonical contracts | Yes | No | Schema-validate contract | INVALID_CONTRACT |
+| 2 | RESOLVE_IDENTITY | Names + version ranges | Pinned {id, version, digest} | Yes | No | Digest verify vs registry | UNKNOWN_CAPABILITY / SIGNATURE_FAIL |
+| 3 | RESOLVE_VERSIONS | Pinned range set | Concrete pins | Yes (lockfile-style) | No | Constraint solver (semver) | VERSION_CONFLICT |
+| 4 | DEPENDENCY_CLOSURE | Pinned set + requires | Closed set | Yes | No | Fixed-point check | DEPENDENCY_UNSATISFIABLE |
+| 5 | CONFLICT_DETECTION | Closed set + conflicts_with | Closed set (validated) | Yes | No | Set-intersection check | CONFLICT_DETECTED |
+| 6 | TYPE_CHECK | Nodes + edges | Typed nodes | Yes | No | I/O schema unification | TYPE_MISMATCH |
+| 7 | IO_BIND | Typed nodes | Bindings resolved | Yes | No | Every required input has a source | INPUT_UNBOUND |
+| 8 | STATE_BIND | reads/writes + resource templates | Concrete state refs | Partial: templates → refs is deterministic; wildcard resolution may need runtime | No | Type + ownership check | STATE_UNRESOLVABLE |
+| 9 | EFFECT_ANALYSIS | Node effects | Aggregated workflow effect set | Yes | No | Effect propagation (∪ over subgraphs) | UNDECLARED_EFFECT |
+| 10 | PERMISSION_DERIVATION | Effects + resources | permissions_required list | Yes | No | Effect→scope mapping (declarative table) | PERMISSION_UNRESOLVABLE |
+| 11 | PRECONDITION_ANALYSIS | Static preconditions | Feasibility flags | Partial | Optional (LLM to *suggest* additional preconditions, only for review) | Contradiction detection | INFEASIBLE_PRECONDITIONS |
+| 12 | TOOL_BINDING | Cap → tool endpoints | Bound execution refs | Yes | No | Tool digest + PRM snapshot | TOOL_UNAVAILABLE |
+| 13 | TOPOLOGY_SELECTION | Nodes + concurrency + state | Scheduler plan | Yes | No | DAG cycle check + write-write conflict check | DAG_CYCLE / WRITE_CONFLICT |
+| 14 | STATIC_GRAPH_VALIDATION | Physical IR | Validated IR | Yes | No | Invariants §31 | INVARIANT_VIOLATION |
+| 15 | POLICY_PREFLIGHT | IR + policy_snapshot | Preflight decision | Yes (given snapshot) | No | PDP evaluation | POLICY_BLOCK |
+| 16 | VALIDATOR_ATTACHMENT | Nodes + postconditions | IR with validator refs | Yes | No | Validator ref resolution | VALIDATOR_MISSING |
+| 17 | FAILURE_LOWERING | Failure classes + compensation refs | Recovery graph | Yes | No | Every compensatable write has compensation_ref | COMPENSATION_MISSING |
+| 18 | RESOURCE_COST_CHECK | Cost hints + budget | Fit decision | Yes | No | Sum vs budget | BUDGET_EXCEEDED |
+| 19 | CANONICALIZE | IR | Canonical bytes | Yes | No | Canonical form check | CANONICALIZATION_FAIL |
+| 20 | HASH_FREEZE | Canonical IR | ManifestDigest | Yes | No | Digest emission | — |
+
+**Only passes 11 and (optionally) upstream *retrieval* may use an LLM.** Everything else is deterministic.
+
+---
+
+## 14. TYPE / CONTRACT CHECKING MODEL
+
+Applying PL foundations (PL1–PL3) as INFERENCE:
+
+### 14.1 What is statically decidable in the compiler
+- **Structural type mismatch** (Output A ≢ Input B under schema unification) — decidable
+- **Undeclared write to state** — decidable if `state.writes` is exhaustive (contract discipline)
+- **Two parallel nodes writing same state resource** — decidable (write-set intersection under scheduler plan)
+- **Read-only workflow containing a WRITE effect** — decidable (effect-set inclusion)
+- **Effect not in workflow's authorized effect set** — decidable
+- **Irreversible effect without approval gate** — decidable (presence of `human_gate` for effects marked IRREVERSIBLE)
+- **Retry on non-idempotent effect** — decidable (retry_policy vs idempotency field)
+
+### 14.2 What is *not* generally statically decidable
+- **Secret flow through arbitrary transforms** — undecidable in general (Rice's theorem). Requires *conservative* information-flow types (over-approximation) or runtime taint tracking. Recommendation: use *labels* not *proofs*.
+- **Value-dependent preconditions** — require refinement types or runtime evaluation.
+- **External-system state that a contract cannot fully predicate** — runtime concern.
+
+### 14.3 The pragmatic contract-checking regime
+- **Simple, structural, well-typed by default.** Refinement/dependent types are OPTIONAL and gated by risk profile.
+- **Effect algebra** = flat lattice of effect classes with monotone join. This is the *minimum-viable effect system* (see §15).
+- **State typing** = read-set + write-set + expected_revision. This is *not* full separation logic; it is CAS-compatible bookkeeping (DS3).
+
+---
+
+## 15. EFFECT SYSTEM MODEL
+
+**Epistemic status:** INFERENCE from PL1. No direct empirical validation in agent literature.
+
+### 15.1 Effect lattice (minimum viable)
+
+```
+PURE
+├── READ_STATE                      (internal, owned state)
+├── READ_EXTERNAL                   (external system reads)
+├── NETWORK                         (network I/O)
+├── WRITE_STATE                     (internal state mutation)
+├── WRITE_EXTERNAL                  (external system writes)
+├── SEND_COMMUNICATION              (email, SMS, notifications)
+├── DELETE                          (subclass of WRITE_*)
+├── TRANSFER_VALUE                  (financial, subclass of WRITE_EXTERNAL)
+├── DEPLOY                          (infrastructure change)
+├── CHANGE_PERMISSION               (IAM change)
+├── ACCESS_SECRET                   (secret read)
+├── EXPOSE_DATA                     (data classified > ambient)
+└── IRREVERSIBLE                    (orthogonal marker; may co-occur)
+```
+
+### 15.2 Rules
+- **Node effects are declared, not inferred.** LLM may *suggest*, but declared effects are the source of truth used by the compiler. Runtime step-guardrail (ToolSafe-style) is the counter-check that a call has not exceeded declared effects.
+- **Workflow effect set = ⋃ (node effect sets).** No cancellation. A "read then delete" is not a "read".
+- **Policy operates on the aggregate.** Preflight: "does this workflow contain any effect the *task-mandate* forbids?"
+- **IRREVERSIBLE forces human_gate.** Compiler invariant: `IRREVERSIBLE ∈ effects → validation.human_gate ≠ null`.
+- **Retry safety:** `retry.max_attempts > 1 ∧ WRITE_* ∈ effects → idempotency ≠ NONE`.
+
+### 15.3 Compile-time answers to Stream 7 questions
+- "Can policy prove `this workflow writes externally`?" — YES, via effect aggregation.
+- "Can the model choose a cap whose effects exceed task-mandate?" — Compiler rejects via effect-inclusion check against the task's *effect budget* (task metadata field, orthogonal to contracts).
+- "How prevent hidden side-effects?" — (a) contract linting during release (require declared effects to be validated against static-analysis of the code where possible; open problem for opaque MCP tools); (b) runtime guardrail per S2.
+
+---
+
+## 16. STATE SEMANTICS
+
+For each state class:
+
+| State | Owner | Authoritative source | Consistency | Mutation | Rollback |
+|-------|-------|----------------------|-------------|----------|----------|
+| Working Context | Run | Runtime scratchpad | Serializable per-run | Node-local, then merged | Checkpoint |
+| Run State | Runtime | Durable execution engine (Temporal-like) | Linearizable | Event-sourced | Replay |
+| Workflow State | Application | Business DB / CAS store | Optimistic CAS (`expected_revision`) | Compensating tx (Sagas, DS2) | Compensation |
+| Artifact State | Artifact store | Content-addressed store (Bazel/Nix-style) | Immutable-by-hash | Append-only | N/A |
+| Environment State | External | System of record | Best-effort | External API | External compensation |
+| Policy State | PDP | Policy store + snapshot | Snapshotted per compile | Versioned rollout | Snapshot rollback |
+| Memory (agent memory) | Agent | Vector/kv store | Application-defined | Append + reindex | Application-defined |
+| Registry State | Governance | Registry (SLSA-style) | Immutable versions | Signed publishes only | New version supersedes |
+
+### 16.1 Compile-time vs runtime split
+- **Compile-time (from contract `state.reads`/`state.writes`):** static write-write conflict detection, over-approximation of read-set for freshness policy.
+- **Runtime (from actual state):** current revision fetch, CAS on writes, retry-on-conflict decision, snapshot-for-replay.
+
+### 16.2 Race detection (H7 formalization)
+Given nodes `N` with concurrent scheduling group `G ⊂ N`:
+- INVARIANT: `∀ ni, nj ∈ G, i≠j : ni.writes ∩ nj.writes = ∅`.
+- This is decidable at compile time given exhaustive `state.writes` declarations.
+- INFERENCE: this is analogous to *data-race freedom by construction* in region-based / linear type systems.
+
+---
+
+## 17. AUTHORIZATION INTEGRATION
+
+### 17.1 Model
+- **Contract carries:** `permissions_required` (a *description* of scopes) — never `permission_granted`.
+- **Compile-time:** *policy preflight* — evaluate a *shape question* against a policy *snapshot*: "Given a hypothetical principal with these attributes, could this manifest ever be authorized?" This is a **fail-fast**, not a grant.
+- **Manifest carries:** `policy_snapshot_ref`, `authorization_request_template`, `preflight_decision_ref`.
+- **Runtime (JIT):** for each effectful node, at the moment of execution, the enforcement plane calls the PDP with the *concrete* {principal, action, resource, context}, obtains a decision, and (if permitted) mints a **short-lived, resource-scoped credential** (OAuth-style) — aligned with the MCP Authorization specification providing OAuth2-based access control for tool invocation, helping enforce least privileges, user-specific scopes, and multi-tenant separation.
+
+### 17.2 Why JIT (H13, C10)
+- State-of-world may change between compile and execute (revoked access, principal delegation change).
+- Preflight-only authorization suffers from **TOCTOU** (time-of-check vs time-of-use) — a classic OS security failure mode.
+- Progent's key innovation is its ability to adapt to the agent's state; traditional static permissions are insufficient for agents that process untrusted data, and Progent's dynamic update mechanism ensures that privilege levels are adjusted in real-time based on information the agent has encountered — this is direct evidence that *static* preflight is insufficient.
+
+### 17.3 The layered authorization decision
+1. **Coarse (compile-time preflight):** categorical effects vs task-mandate → BLOCK or CONTINUE
+2. **Fine (JIT):** concrete PDP call → DECISION per node
+3. **Runtime step-level guardrail (ToolSafe-style):** contextual anomaly detection over interaction history — TS-Guard proactively detects unsafe tool invocation actions by reasoning over interaction history and assessing request harmfulness and action–attack correlations; TS-Flow utilizes TS-Guard's interpretable safety judgments to guide agent behavior
+4. **Post-execution validation:** postcondition + effect confirmation
+
+**Authorization is a gate on a node, NOT an edge.** Encoding it as an edge would misrepresent it as a data/control dependency and would fail to model the runtime nature of the check.
+
+---
+
+## 18. STATIC vs RUNTIME VALIDATION MATRIX
+
+| Check | Compile | Pre-exec | Post-exec | E2E |
+|-------|---------|----------|-----------|-----|
+| Schema conformance (types) | ✅ inputs & outputs (statically) | ✅ input at runtime | ✅ output | — |
+| Dependency closure | ✅ | — | — | — |
+| Cycles / topology | ✅ | — | — | — |
+| Unresolved inputs | ✅ | — | — | — |
+| Impossible preconditions (contradictory) | ✅ | — | — | — |
+| Undeclared effect (LINT) | ✅ (release-time) | — | ✅ (runtime step-guardrail if code emits unexpected call) | — |
+| Permission requirements declared | ✅ | — | — | — |
+| Static permission escalation | ✅ | — | — | — |
+| Graph topology validity | ✅ | — | — | — |
+| Current state / freshness | — | ✅ (CAS `expected_revision`) | — | — |
+| Concrete resource resolution | — | ✅ | — | — |
+| Current principal / auth | — | ✅ (JIT PDP) | — | — |
+| Policy decision | ⚠ preflight only | ✅ concrete | — | — |
+| Approval (human_gate) | ✅ presence of gate | ✅ actual approval | — | — |
+| Environment availability | — | ✅ | — | — |
+| Output schema | — | — | ✅ | — |
+| Postconditions | — | — | ✅ | — |
+| Invariants | — | — | ✅ | — |
+| Effect confirmation | — | — | ✅ (or step-guardrail concurrent) | — |
+| State transition validity | — | — | ✅ | — |
+| Task-goal achievement | — | — | — | ✅ (semantic validator / human) |
+
+---
+
+## 19. FAILURE / RECOVERY TAXONOMY
+
+| Failure class | Detected when | Detected by | Retry? | Rebind? | Re-resolve? | Recompile? | Human? | Abort? | Compensate? |
+|---------------|---------------|-------------|--------|---------|-------------|------------|--------|--------|-------------|
+| UNKNOWN_CAPABILITY | Resolve | Compiler | No | No | Yes (registry refresh) | Yes | If persistent | If unresolved | — |
+| VERSION_CONFLICT | Resolve | Compiler | No | No | Yes | Yes | Sometimes | If unresolved | — |
+| DEPENDENCY_UNSATISFIABLE | Closure | Compiler | No | No | Yes | Yes | Sometimes | Yes | — |
+| TYPE_MISMATCH | Type check | Compiler | No | Retrieval retry | Sometimes | Yes | Sometimes | Yes | — |
+| INPUT_UNBOUND | IO bind | Compiler | No | Planner retry | — | Yes | Sometimes | Yes | — |
+| STATE_STALE | Pre-exec | Runtime | Yes (with refresh) | No | No | No | No | No | — |
+| STATE_CONFLICT (write-write) | Compile or runtime CAS | Compiler / Runtime | Depends on idempotency | — | — | Sometimes (local repair) | — | — | Maybe |
+| PRECONDITION_FAILED | Pre-exec | Runtime | Sometimes | No | No | No | If persistent | Possibly | — |
+| EFFECT_NOT_ALLOWED | Compile or runtime guardrail | Compiler / Guardrail | No | No | No | Yes | Sometimes | Yes | — |
+| PERMISSION_UNRESOLVABLE | Compile | Compiler | No | No | No | Yes | Yes | Yes | — |
+| AUTHORIZATION_DENIED | Runtime | PDP (JIT) | No (unless transient) | No | No | Sometimes | Yes | Yes | — |
+| POLICY_BLOCK | Preflight or runtime | PDP | No | — | — | If policy changes | Yes | Yes | — |
+| TOOL_UNAVAILABLE | Runtime | Runtime | Yes (transient) | Yes (alternative if declared) | — | If persistent | If persistent | — | — |
+| TOOL_FAILURE | Runtime | Tool | Depends on idempotency | Sometimes | — | — | Sometimes | — | Yes if writes |
+| OUTPUT_INVALID | Post-exec | Validator | Sometimes | No | No | No | Sometimes | Sometimes | Maybe |
+| POSTCONDITION_FAILED | Post-exec | Validator | No | No | No | Sometimes | Yes | Sometimes | Yes |
+| VALIDATOR_FAILED (validator itself) | Post-exec | Runtime | Yes | — | — | — | Yes | — | — |
+| RESOURCE_EXHAUSTED | Pre-exec or runtime | Runtime | Backoff | — | — | — | — | Sometimes | — |
+| COMPENSATION_FAILED | Recovery | Runtime | Bounded | — | — | — | Always (paged) | Sometimes | — |
+| UNRECOVERABLE | Any | Any | No | No | No | No | Always | Yes | Attempt |
+
+---
+
+## 20. RECOMPILATION / LOCAL REPAIR MODEL
+
+### 20.1 Change classes and their responses
+
+| Change | Local rebind allowed? | New manifest revision required? | Re-authorization required? |
+|--------|-----------------------|--------------------------------|----------------------------|
+| Tool endpoint changes but digest unchanged | Yes | No | No |
+| Tool digest changes | No | Yes | Yes for effectful nodes |
+| Contract version changes within pinned range | No | Yes | Yes if permissions/effects changed |
+| Contract version changes outside pinned range | No | Yes (re-resolve) | Yes |
+| State snapshot refresh (`expected_revision` bump) | Yes (data change only) | No | No |
+| Policy snapshot changes | No | Yes | Yes |
+| Retry on transient failure with same input | Yes | No | No |
+| Alternative capability substituted per `alternatives` | No | Yes (subgraph revision) | Partial (only affected nodes) |
+| Human intervention modifies plan | No | Yes | Yes |
+
+### 20.2 Principle (from H12)
+- **Any semantic change → new manifest revision.** The revision references the parent manifest hash (chain of provenance).
+- **Data-only changes** (state freshness, retry with identical inputs) do not require a new revision.
+- **Partial recompilation** is permitted: an unaffected subgraph retains its prior validation flags; only the *dirty closure* is re-validated.
+- **Re-authorization** must always occur for nodes whose {effects, resources, principal, policy_snapshot} changed.
+
+---
+
+## 21. REPRODUCIBILITY CONTRACT
+
+### 21.1 Three tiers (must be distinguished)
+
+- **STRUCTURAL** — same inputs produce byte-identical manifest hash. Fully achievable for the deterministic passes (§13). **Required for audit.**
+- **BEHAVIORAL** — same manifest + same environment + same state produces same observable side effects. Achievable modulo external non-determinism (clocks, IDs); requires idempotency keys and state snapshots.
+- **STATISTICAL** — LLM-driven decisions (retrieval, planning suggestions) reproduce *up to a distribution*. Not deterministic in general.
+
+### 21.2 Frozen inputs required for replay
+
+| Input | Required for | Storage |
+|-------|--------------|---------|
+| Task digest | All three tiers | Manifest header |
+| Retrieval snapshot (indexed IDs) | Statistical → Structural (of downstream) | Registry snapshot ref |
+| Contract set + digests | Structural | Manifest header |
+| Tool digests | Structural + Behavioral | Manifest header |
+| Policy snapshot | Structural + Behavioral | Manifest header |
+| State snapshot ref (`expected_revision`) | Behavioral | Manifest per-node |
+| Resolver + compiler version | Structural | Manifest header |
+| Model + version + sampler params | Statistical | Retrieval snapshot metadata |
+| Validator versions | Behavioral | Manifest per-validator |
+| Runtime image (OTel, executor) | Behavioral | Manifest header |
+
+**Note:** "temperature 0" is *not* reproducibility. Numerical determinism of LLM inference depends on kernels, batching, hardware. Statistical replay requires multi-run distributions, not single-run byte-equality. (Anti-bias gate.)
+
+---
+
+## 22. VERSIONING / PROVENANCE MODEL
+
+**Approach:** apply SLSA + in-toto (SC1/SC2) principles to skill packages.
+
+- **Skill package** = `{ SKILL.md, contract.yaml, code/, validators/, tests/, schemas/ }` bundled as a **content-addressed artifact**.
+- **Digest = SHA-256 of canonicalized package.**
+- **In-toto layout** describes the pipeline: source → build → sign → publish.
+- **Signature** by publisher key attested via Sigstore-style transparency log.
+- **Registry entry** = `{ capability_id, version, digest, publisher, in-toto attestations[], lifecycle_state }`.
+- **`skill@1.2.3` alone is not sufficient identity;** every reference in a manifest must include the digest (as in Nix / Bazel MODULE.bazel with `integrity` hashes).
+
+**Contract-schema evolution:**
+- Contracts are versioned separately from code (`contract_schema_version`).
+- Backward-compatible additions (new optional fields) → minor bump.
+- Breaking changes (new required fields, effect additions) → major bump + full re-resolution.
+
+---
+
+## 23. PRACTICAL TOOL / STANDARD MAP
+
+| Concern | Tool/Standard | Solves | Doesn't solve | Fit | Adapter |
+|---------|--------------|--------|---------------|-----|---------|
+| Interface schema | JSON Schema, Protobuf, OpenAPI | I/O typing | Effects, permissions, state | Direct | Attach to contract |
+| Discovery/transport | MCP | MCP standardizes how to integrate additional context and tools into the ecosystem of AI applications, in a way similar to LSP | Semantic contract, effect analysis | Direct (transport layer) | Overlay contract |
+| Authorization | OAuth 2.1 (via MCP Authorization), Cedar, OPA/Rego | Fine-grained PDP | Effect declaration; workflow-level analysis | Direct (PDP) | policy_snapshot_ref in manifest |
+| ReBAC | Zanzibar-style (SpiceDB, Ory Keto) | Relationship-based authorization | Effect systems | Direct for resource models | — |
+| Policy DSL | Cedar (OOPSLA), Rego, Progent DSL | Deterministic policy | LLM-generated policy safety | Direct | — |
+| Runtime privilege control | Progent | Framework operates deterministically at runtime, providing provable security guarantees | Contract semantics; compile-time analysis | Direct for runtime layer | Wrap tool calls |
+| Step-level guardrail | ToolSafe / TS-Guard | Detect unsafe tool invocations by reasoning over interaction history | Compile-time errors | Direct for defense-in-depth | Inline before tool call |
+| Durable execution | Temporal, AWS Step Functions, Argo, Dagster | State, retry, compensation | Semantic contract | Direct as runtime target | ExecutionIR → workflow definition |
+| Compensation | Sagas (DS2) | Long-running transactions | Contract-level validity | Direct | compensation_ref field |
+| Observability | OpenTelemetry | Traces, metrics, logs | Semantic meaning | Direct | Standard OTel scope per manifest |
+| Provenance | W3C PROV, SLSA, in-toto | Build integrity, attestation | Runtime authorization | Direct at packaging | — |
+| Content-addressed artifacts | Nix, Bazel, OCI digests | Reproducibility | Semantic contract | Direct | Digest all skill artifacts |
+| Dependency resolution | Cargo, npm, pip lockfiles, Nix | Version resolution | Effect / permission | Adapt | Lockfile-per-manifest |
+| Execution isolation | WASM, containers, gVisor, Firecracker | Sandboxing | Contract semantics | Direct | Per-tool-server |
+| Compiler IR pattern | LLVM, MLIR (multi-level IR) | Pass architecture, lowering | Domain semantics | Analogy | Design pattern |
+
+**No single tool provides an Enterprise Capability Contract or a compiler for it.** The overlay layer must be built.
+
+---
+
+## 24. REFERENCE ARCHITECTURE
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│  CAPABILITY REGISTRY (immutable, signed)                          │
+│  - Contract + code + validators, digest-addressed                 │
+│  - In-toto attestations, SLSA level ≥ 3 build                     │
+└──────────────┬────────────────────────────────────────────────────┘
+               │  (fetched by digest)
+┌──────────────▼────────────────────────────────────────────────────┐
+│  DISCOVERY / RETRIEVAL (probabilistic)                            │
+│  - LLM-guided; MCP-backed; returns candidate contracts + evidence │
+└──────────────┬────────────────────────────────────────────────────┘
+               │  ContractBundle
+┌──────────────▼────────────────────────────────────────────────────┐
+│  RESOLVER + LOGICAL COMPILER  (deterministic)                     │
+│  - Passes 1–11, 15  →  CapabilityIR                               │
+└──────────────┬────────────────────────────────────────────────────┘
+               │  CapabilityIR (hashed)
+┌──────────────▼────────────────────────────────────────────────────┐
+│  PHYSICAL COMPILER  (deterministic, Profile C only)               │
+│  - Passes 12–20     →  ResolvedExecutionManifest (immutable)      │
+└──────────────┬────────────────────────────────────────────────────┘
+               │  Manifest digest
+┌──────────────▼────────────────────────────────────────────────────┐
+│  DURABLE EXECUTION RUNTIME (Temporal-like)                        │
+│  - State refresh → JIT PDP → Guardrail (ToolSafe-style)           │
+│  - Execute → Postcondition validate → Commit/Compensate           │
+│  - OTel traces, PROV attestation, checkpointing                   │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 25. MACHINE-READABLE: CapabilityContract v0.1
+
+```yaml
+apiVersion: harness.enterprise/v0.1
+kind: CapabilityContract
+contract_schema_version: "0.1"
+
+identity:
+  capability_id: "invoice.email.send"
+  version: "1.2.3"
+  digest: "sha256:..."
+  publisher: "did:web:acme.com"
+  signature:
+    keyid: "..."
+    sig: "..."
+  compatibility:
+    contract_schema: ">=0.1 <0.2"
+    abi: "v1"
+
+discovery:
+  description: "Send an invoice email to a recipient."
+  intents: ["notify-customer", "send-billing-email"]
+  tags: ["email", "invoice", "communication"]
+  embedding_ref: "emb://acme.registry/invoice.email.send@1.2.3"
+  examples:
+    - input:  { recipient: "user@example.com", invoice_id: "INV-1" }
+      output: { message_id: "msg-42", delivered_at: "2026-..." }
+
+interface:
+  input_schema: { $ref: "schemas/input.json" }
+  output_schema: { $ref: "schemas/output.json" }
+  artifact_types:
+    outputs:
+      - name: "delivery_receipt"
+        media_type: "application/json"
+
+composition:
+  requires: []
+  provides: ["delivery_receipt"]
+  conflicts_with: []
+  alternatives: ["invoice.email.send.batched@^1"]
+
+state:
+  reads:
+    - resource_template: "invoice/{invoice_id}"
+      freshness: "monotonic_revision"
+  writes:
+    - resource_template: "email_log/{invoice_id}"
+      expected_revision: "input:$.invoice_revision"
+
+conditions:
+  preconditions:
+    - ref: "cond://invoice.notPaid"
+    - ref: "cond://recipient.consentValid"
+  postconditions:
+    - ref: "cond://email.sent"
+  invariants: []
+
+effects:
+  - SEND_COMMUNICATION
+  - WRITE_STATE
+  - NETWORK
+
+security:
+  permissions_required:
+    - { action: "invoice:read",  resource_template: "invoice/{invoice_id}" }
+    - { action: "email:send",    resource_template: "recipient/{recipient}" }
+  principal_requirements:
+    delegable: false
+  data_classification: "PII_BASIC"
+  secret_requirements: []
+
+execution:
+  tool_binding_ref: "mcp://email-server/tool/send"
+  timeout_ms: 15000
+  idempotency:
+    mode: "KEY"
+    key_source: "hash(recipient || invoice_id)"
+  retry_policy:
+    max_attempts: 3
+    backoff: "exponential"
+    only_if_idempotent: true
+  concurrency:
+    serialize_on: ["invoice/{invoice_id}"]
+
+validation:
+  schema_validator_ref: "schema://email.send.output"
+  semantic_validator_ref: "semantic://email.deliveryReceipt"
+  human_gate: null   # not IRREVERSIBLE
+
+failure_semantics:
+  classes:
+    - class: "TOOL_FAILURE"
+      retryable: true
+    - class: "AUTHORIZATION_DENIED"
+      retryable: false
+  compensation_ref: "cap://email.send.compensate"
+
+operations:
+  telemetry_schema: "otel://ent.harness.invoice.email.send"
+  cost_hints:
+    p50_ms: 300
+    p99_ms: 2500
+    monetary_cents_per_call: 0.02
+  sla:
+    availability: "99.9"
+
+release:
+  lifecycle_state: "stable"
+  eval_suite_ref: "eval://email.send@1.2.3"
+  compatibility_tests: ["ct://email.send.smoke"]
+```
+
+---
+
+## 26. MACHINE-READABLE: CapabilityIR v0.1
+
+```yaml
+apiVersion: harness.enterprise/v0.1
+kind: CapabilityIR
+ir_version: "0.1"
+
+task:
+  task_hash: "sha256:..."
+  input_hash: "sha256:..."
+  effect_budget: [READ_STATE, WRITE_STATE, SEND_COMMUNICATION, NETWORK]
+
+nodes:
+  - id: n0
+    capability_ref: { id: "invoice.load",       version: "2.1.0", digest: "sha256:..." }
+    declared_reads:  ["invoice/{invoice_id}"]
+    declared_writes: []
+    declared_effects: [READ_STATE]
+    inputs:
+      invoice_id: { source: TASK_INPUT, path: "$.invoice_id" }
+    outputs:
+      invoice:  { schema_ref: "schemas/invoice.json" }
+  - id: n1
+    capability_ref: { id: "invoice.email.send", version: "1.2.3", digest: "sha256:..." }
+    declared_reads:  ["invoice/{invoice_id}"]
+    declared_writes: ["email_log/{invoice_id}"]
+    declared_effects: [SEND_COMMUNICATION, WRITE_STATE, NETWORK]
+    inputs:
+      recipient:  { source: TASK_INPUT, path: "$.recipient" }
+      invoice_id: { source: TASK_INPUT, path: "$.invoice_id" }
+    approval_gate:
+      required: false     # not IRREVERSIBLE
+
+edges:
+  - { from: n0, to: n1, type: DATA_DEPENDENCY,  binding: "n0.invoice.id → n1.invoice_id" }
+  - { from: n0, to: n1, type: STATE_DEPENDENCY, resource: "invoice/{invoice_id}" }
+
+workflow_effects: [READ_STATE, WRITE_STATE, SEND_COMMUNICATION, NETWORK]
+permissions_required_aggregate:
+  - "invoice:read"
+  - "email:send"
+
+analysis:
+  cycles: none
+  write_write_conflicts: none
+  undeclared_effects: none
+  precondition_feasibility: feasible
+
+metadata:
+  resolver_version: "harness-resolver@0.1.4"
+  compiler_version: "harness-compiler@0.1.4"
+  contract_schema_version: "0.1"
+  ir_hash: "sha256:..."   # canonicalized hash
+```
+
+---
+
+## 27. MACHINE-READABLE: ResolvedExecutionManifest v0.1
+
+```yaml
+apiVersion: harness.enterprise/v0.1
+kind: ResolvedExecutionManifest
+manifest_version: "0.1"
+
+parent_logical_ir_hash: "sha256:..."
+manifest_hash: "sha256:..."         # canonicalized hash of THIS document
+parent_manifest_hash: null          # or previous revision hash
+
+runtime_target: "temporal@1.24"
+
+snapshots:
+  registry_snapshot: "sha256:..."
+  policy_snapshot:   "sha256:..."   # PDP state pinned at compile
+  state_snapshot_refs:
+    "invoice/{invoice_id}": "revision:1731"
+
+nodes:
+  - id: n1
+    logical_id: n1
+    binding:
+      tool_ref: "mcp://email-server-prod/tool/send"
+      tool_digest: "sha256:..."
+      server_prm_ref: "prm.json@sha256:..."
+    idempotency_key: "expr: hash(recipient || invoice_id)"
+    timeout_ms: 15000
+    retry: { max_attempts: 3, backoff: exponential, only_if_idempotent: true }
+    concurrency: { serialize_on: ["invoice/{invoice_id}"] }
+    validators:
+      pre:  ["schema://input"]
+      post: ["schema://output", "semantic://email.deliveryReceipt"]
+    authorization:
+      pdp_ref: "cedar://ent-pdp"
+      request_template:
+        principal: "$RUN_PRINCIPAL"
+        action: "email:send"
+        resource: "recipient/${input.recipient}"
+        context: { run_id: "$RUN_ID", state_revision: "$STATE_REVISION" }
+    compensation_ref: "cap://email.send.compensate"
+
+scheduler_plan:
+  levels: [ [n0], [n1] ]
+  barriers: []
+
+preflight_decision:
+  policy_snapshot: "sha256:..."
+  decision: PERMIT_SUBJECT_TO_JIT
+  evidence: "..."
+
+observability:
+  otel_scope: "ent.harness.run"
+
+immutability: true
+signature:
+  signer: "did:web:harness-compiler.acme"
+  keyid: "..."
+  sig: "..."
+```
+
+---
+
+## 28. EXAMPLE COMPILATIONS
+
+### 28.A Read-only single capability (Profile A)
+- **Task:** "What is the balance on account 42?"
+- **Candidates:** `account.balance.read@2.0.0`, `account.summary.read@1.4.0`
+- **Contracts:** both READ_STATE + READ_EXTERNAL; typed `{account_id} → {balance}`
+- **IR:** single node, no dependencies
+- **Compile checks:** IDENTITY, TYPE_CHECK, IO_BIND, EFFECT_ANALYSIS (all reads), PERMISSION_DERIVATION (`account:read/42`), CANONICALIZE, HASH
+- **Policy preflight:** "read on account/42" — permit-shape
+- **Manifest:** single-node, no compensation, no approval gate
+- **Execution:** JIT auth → tool call → schema validate output → return
+- **Profile A architecture:** skip Physical IR; direct execution from CapabilityIR is acceptable.
+
+### 28.B Multi-step data workflow (Profile B)
+- **Task:** "Summarize last month's invoices and store the report."
+- **Candidates:** `invoice.query`, `invoice.aggregate`, `report.render`, `report.store`
+- **Contracts:** read of `invoice/*`, write of `report/{report_id}`; effects include WRITE_STATE
+- **IR:** 4 nodes; DATA_DEPENDENCY chain; STATE_DEPENDENCY on `report/{report_id}` (single writer)
+- **Compile checks:** type-chain across `invoice → aggregate → report`, write-set analysis (single writer to `report`), idempotency (KEY on `report_id`), retry safety (WRITE + idempotent)
+- **Policy preflight:** aggregate effects `{READ_STATE, WRITE_STATE}` — permit-shape
+- **Manifest:** 4-node, compensation on `report.store` (delete on rollback), postcondition validators on aggregate schema and stored report existence
+- **Execution:** each node executes with JIT auth; on `report.store` failure → retry (idempotent) → if final failure → compensate `delete report/{report_id}` → surface error
+
+### 28.C Side-effectful high-risk enterprise workflow (Profile C)
+- **Task:** "Approve refund of $500 to customer 7 and email confirmation."
+- **Candidates:** `refund.eligibility.check`, `payment.refund.issue`, `email.receipt.send`, `audit.record.write`
+- **Contracts:** TRANSFER_VALUE + IRREVERSIBLE on `payment.refund.issue`; SEND_COMMUNICATION on `email.receipt.send`
+- **IR:** 4 nodes; approval gate on `payment.refund.issue` (compiler-forced since IRREVERSIBLE); DATA_DEPENDENCY `check → refund → email → audit`
+- **Compile checks:**
+  - Effect ⊆ task_effect_budget? — requires task carrying `TRANSFER_VALUE` in budget (else COMPILE FAIL)
+  - IRREVERSIBLE ⇒ approval_gate present — enforced
+  - Idempotency KEY on `refund` — enforced
+  - Compensation for `audit.write` — enforced (append-only, compensation = append-reversal record)
+  - Payment refund has *no* compensation (IRREVERSIBLE) — enforced: no compensation_ref allowed, only forward-only recovery
+- **Policy preflight:** cross-check that principal *could* hold `payments:refund` and $500 is within delegation ceiling
+- **Physical IR:** binds to `payment-gateway-prod`, tool digest pinned, PRM snapshot for OAuth2 scopes pinned
+- **Manifest:** signed, immutable; policy_snapshot_id pinned
+- **Execution:**
+  1. State refresh: verify eligibility unchanged
+  2. Precondition check: refund not already processed (state.reads with expected_revision)
+  3. Human approval gate (blocking)
+  4. JIT PDP: concrete `{principal, "payments:refund", "customer/7:refund/500", context}` → PERMIT
+  5. Short-lived token minted
+  6. Guardrail (ToolSafe-style) inspects intended tool call vs manifest declaration — must match
+  7. Execute refund; postcondition validator confirms external receipt id
+  8. Execute email; audit record with full attestation chain
+  9. On any step failure: forward-only recovery (do not silently retry TRANSFER_VALUE without new authorization)
+
+---
+
+## 29. NEGATIVE EXAMPLES — compiler MUST block
+
+1. **Undeclared write.** Capability `report.store` declares `effects: [READ_STATE]` but its code contains a write. Contract lint / release-time check detects (INFERENCE — full detection is limited by tool opacity, but declared-effect vs *retrieval-time-observed-effect* mismatch caught at runtime by step-guardrail). **Blocks:** at release-time when possible; at runtime otherwise.
+2. **Retry on non-idempotent side-effect.** `payment.transfer` with `idempotency: NONE` and `retry.max_attempts: 3`. Compiler invariant `NO_UNSAFE_RETRY_FOR_NON_IDEMPOTENT_EFFECT` → COMPILE FAIL.
+3. **IRREVERSIBLE without approval gate.** `data.warehouse.drop_table` with effects including IRREVERSIBLE but `validation.human_gate: null` → COMPILE FAIL.
+4. **Write-write race.** Two parallel nodes both writing `account/{id}` in same scheduler level → COMPILE FAIL (`NO_UNORDERED_WRITE_WRITE_CONFLICT`).
+5. **Effect exceeds task-mandate.** Task budget `[READ_STATE]`, but selected capability declares `[READ_STATE, TRANSFER_VALUE]` → COMPILE FAIL. Even if the LLM's plan is otherwise well-formed, the effect-inclusion check rejects.
+6. **Unresolved permission requirement.** Capability requires `hr:read` but principal role has no policy path to `hr:read` → policy preflight FAIL (permit-fast-fail).
+7. **Cycle in DAG mode.** Node A depends on B which depends on A → COMPILE FAIL.
+8. **Type mismatch across binding.** `n0.output.total: number`, bound to `n1.input.recipient: string` → COMPILE FAIL.
+9. **Untrusted contract source.** Contract fetched but signature does not verify against publisher trust anchor → REJECT before resolution.
+10. **Policy expansion attempted mid-run without approval.** In-run policy-update proposal from LLM expands allowed tool set. Per Progent's model: each proposed update is determined by an SMT solver to be either a narrowing (applied automatically) or an expansion (requiring explicit approval) → expansion rejected without human approval.
+
+---
+
+## 30. ENTERPRISE DESIGN PRINCIPLES
+
+| # | Principle | Evidence | Conf | Apply when | Do NOT apply when | Falsifier |
+|---|-----------|----------|------|------------|-------------------|-----------|
+| P1 | Retrieval ≠ Execution: retrieval bundles are candidates, never grants | STANDARD (C3) + INFERENCE | HIGH | Always | — | Study shows direct retrieval-to-exec is equally safe |
+| P2 | Descriptions are for humans and retrieval; contracts are for machines | STANDARD (C3, MCP) | HIGH | Always | — | — |
+| P3 | Effects and permissions are separate concepts | INFERENCE (H5) | HIGH | HIGH-risk workflows | Trivial pure agents | Study shows permissions fully determine effects |
+| P4 | LLM proposes; compiler decides; PDP authorizes; guardrail double-checks | EMPIRICAL (Progent, ToolSafe) | HIGH | Any tool-using agent | Chat-only assistants | Layer removal shows no ASR increase |
+| P5 | Monotonic confinement: LLM-driven policy updates may only narrow without approval | FORMAL+EMPIRICAL (C13) | HIGH | Any dynamic policy | Static policy only | — |
+| P6 | Every irreversible effect requires an approval gate | INFERENCE + risk-management practice | HIGH | HIGH-risk profile | LOW-risk | — |
+| P7 | Every retry on WRITE requires an idempotency contract | ENGINEERING_PRACTICE (durable execution) | HIGH | Any WRITE effect | Read-only | — |
+| P8 | Compile-time invariants > runtime hope | INFERENCE from PL | HIGH | Structural properties | Content-dependent properties | — |
+| P9 | JIT authorization > plan-time authorization | INFERENCE (TOCTOU) + STANDARD (MCP Auth) | HIGH | Any effectful call | Extremely low-latency read | — |
+| P10 | Every manifest change with semantic impact requires new revision | INFERENCE + ENGINEERING_PRACTICE | HIGH | Compiled manifests | Ephemeral runs | — |
+| P11 | Content-address everything; version alone is insufficient | ENGINEERING_PRACTICE (SLSA, Nix, Bazel) | HIGH | Reproducibility-required | Sandbox only | — |
+| P12 | Trust the publisher signature, not the tool description | STANDARD (C3) | HIGH | Multi-tenant/marketplace | Fully internal registry | — |
+| P13 | Runtime step-level guardrail is a defense-in-depth, not a substitute for compile checks | EMPIRICAL (C4) + INFERENCE | HIGH | HIGH-risk | LOW-risk | Compile checks alone match combined ASR |
+| P14 | Preferring simpler architecture at LOW risk is the default | Anti-bloat principle | HIGH | LOW-risk agents | HIGH-risk agents | — |
+| P15 | Logical + Physical IR only when Profile C | DESIGN_RECOMMENDATION | MEDIUM | HIGH-risk workflows | LOW/MED | Study shows single-IR sufficient |
+| P16 | State reads/writes are the minimum state semantics; full CRDT/ML/etc unnecessary at contract level | ENGINEERING_PRACTICE (DS3) | MED-HIGH | Stateful workflows | Pure agents | — |
+| P17 | Postconditions must be *deterministically verifiable* where possible; semantic validators are best-effort | INFERENCE | MED-HIGH | All | — | — |
+| P18 | Compensation is required for every reversible WRITE; forward-only recovery for IRREVERSIBLE | FORMAL (Sagas) | HIGH | HIGH-risk | LOW-risk | — |
+| P19 | Every effectful node's telemetry must carry {manifest_hash, node_id, run_id, policy_snapshot_id} | ENGINEERING_PRACTICE + STANDARD (OTel, PROV) | HIGH | All | Prototype | Auditability regression |
+| P20 | Retrieval snapshots must be reproducible even if LLM outputs are not | INFERENCE (reproducibility tiers) | MED-HIGH | Regulated workloads | R&D | — |
+| P21 | Ablate before adding a contract field | Anti-bloat, empirical rigor | HIGH | Contract evolution | — | — |
+| P22 | Risk-profile-tiered architecture, not one-size-fits-all | DESIGN_RECOMMENDATION | HIGH | Any large registry | Single-app harness | — |
+
+---
+
+## 31. IMPLEMENTATION BLUEPRINT — Minimal Enterprise Harness Compiler
+
+**Language:** Rust or TypeScript (either is fine; determinism and canonicalization are the actual requirements).
+
+**Structure:**
+```
+harness-compiler/
+├── contract-loader/     # fetch by digest, verify signature (Sigstore-style)
+├── resolver/            # normalize, pin identity, resolve versions, closure
+├── logical-compiler/    # type-check, IO-bind, state-bind, effect-analysis,
+│                        # precondition-analysis, graph validation
+├── policy-preflight/    # PDP snapshot query
+├── physical-compiler/   # tool-bind, idempotency, topology, validators, failure-lowering
+├── canonicalize/        # RFC 8785-style JSON canonicalization (or CBOR)
+├── hash-freeze/         # SHA-256 emit; produce manifest
+└── invariant-checker/   # runs all compiler_requirements from the prompt
+```
+
+**Dependencies:**
+- JSON Schema validator (compile-time)
+- SMT (Z3) for optional monotonic-policy-update proof (Progent-style)
+- OPA/Cedar PDP for preflight
+- OpenTelemetry SDK
+- Sigstore/Cosign for signature verification
+- OCI/registry client for content-addressed retrieval
+- Temporal (or equivalent) as default runtime target
+
+**Invariant checks (per compiler_requirements block, formalized):**
+
+- `NO_UNKNOWN_CAPABILITIES`: ∀ n ∈ nodes: n.capability_ref.digest ∈ registry
+- `NO_UNRESOLVED_REQUIRED_DEPENDENCIES`: ∀ n: n.requires ⊆ resolved_set
+- `ALL_INPUTS_BOUND_OR_EXPLICITLY_DYNAMIC`: ∀ n, i ∈ n.inputs: i.source ≠ ⊥
+- `TYPE_COMPATIBILITY`: unifier succeeds on every binding edge
+- `NO_UNDECLARED_EFFECTS`: (release-time when tool code available) declared_effects ⊇ statically-observed effects — **limited** for opaque MCP tools (open problem)
+- `ALL_EFFECTFUL_NODES_HAVE_PERMISSION_REQUIREMENTS`: ∀ n with effects ⊄ {PURE, READ_STATE}: permissions_required ≠ ∅
+- `NO_STATIC_PERMISSION_ESCALATION`: aggregate permissions_required ⊆ principal.granted_scopes ∪ delegation_paths
+- `ALL_CRITICAL_NODES_HAVE_VALIDATORS`: ∀ n with WRITE_* or IRREVERSIBLE effect: validators.post ≠ ∅
+- `NO_UNSAFE_RETRY_FOR_NON_IDEMPOTENT_EFFECT`: n.retry.max_attempts > 1 ∧ WRITE_* ∈ n.effects → n.idempotency.mode ≠ NONE
+- `NO_UNORDERED_WRITE_WRITE_CONFLICT`: ∀ scheduler-level L, ∀ ni, nj ∈ L, i≠j: ni.writes ∩ nj.writes = ∅
+- `NO_DAG_CYCLES_IN_DAG_MODE`: topological sort succeeds
+- `ALL_APPROVAL_REQUIRED_EFFECTS_HAVE_APPROVAL_GATE`: IRREVERSIBLE ∈ n.effects → n.approval_gate.required = true
+- `EXACT_CONTRACT_IDENTITY_PINNED`: every capability_ref has {id, version, digest}
+- `MANIFEST_CANONICALIZED_AND_HASHED`: `manifest.hash = SHA256(canonicalize(manifest \ {hash, signature}))`
+
+**Limits of provability (must be documented):**
+- Effect over-approximation depends on contract honesty; runtime guardrail is required fallback.
+- Full information-flow (data classification tracking through arbitrary transforms) is *not* generally decidable and must be conservative.
+- Preflight is *shape*-authorization, not fact-authorization; JIT is the true gate.
+
+---
+
+## 32. TEST SUITE
+
+- **Unit:** each compiler pass, deterministic (property test: same input → same output byte-identical).
+- **Contract tests:** for each contract field, a property that the resolver enforces it (e.g., missing `idempotency` on WRITE with retry → COMPILE FAIL).
+- **Property tests:**
+  - "For every well-typed IR, the manifest hash is stable across re-runs."
+  - "For every manifest, replaying yields identical structural output."
+  - "For every retrieval bundle, compilation is monotone: adding a candidate never *removes* validity of the compiled manifest for a smaller subset."
+- **Integration:** end-to-end run against a stub PDP + stub tool server + stub state store.
+- **Security:**
+  - AgentDojo-style prompt-injection suite
+  - ASB tool-hijacking suite
+  - AgentPoison knowledge-base-poisoning suite
+  - Custom: signature-verification failure, digest-mismatch, policy-snapshot tampering
+- **Replay:** given a stored manifest + state snapshot, replay must reproduce structural output.
+- **Fault injection:**
+  - Tool timeout → retry policy honored
+  - Tool 5xx → retry, then failure classification
+  - PDP unavailable → deny-fast per policy
+  - Guardrail false-positive → recovery path
+- **Stochastic regression:** N replays with different LLM sampling seeds must all *compile to the same manifest hash* when the retrieval snapshot is pinned.
+
+---
+
+## 33. OPEN RESEARCH QUESTIONS
+
+- **OQ1.** Is there an *empirical* minimum contract-field set for a given risk profile? (No study currently answers this.)
+- **OQ2.** Does a Logical/Physical IR split reduce runtime repair cost or is a single IR sufficient at all risk levels?
+- **OQ3.** How can effect declarations be *automatically verified* against opaque MCP tool code? (Currently: trust + step-guardrail.)
+- **OQ4.** What is the right expressiveness / decidability trade-off for the policy-update DSL beyond Progent's design?
+- **OQ5.** Can compile-time information-flow analysis be made practical for LLM-agent workflows without unacceptable false-positive rate?
+- **OQ6.** Under what conditions is a state-machine-only architecture (no compiler) equivalent to a compiled architecture in reliability?
+- **OQ7.** How do we validate *semantic* postconditions in a way that is not itself a probabilistic LLM check? (Cross-validation, ensemble, human-in-the-loop are candidates; no clear best practice.)
+- **OQ8.** What is the correct compensation semantics for cross-tenant / cross-system side effects (Sagas assume single-DB atomicity semantics that do not hold externally)?
+- **OQ9.** How should contract versioning interact with running long-lived workflows spanning contract-schema upgrades?
+- **OQ10.** Can retrieval bundles themselves be attested as reproducibility inputs without leaking proprietary index contents?
+
+---
+
+## 34. FINAL ARTIFACT — Enterprise Capability Contract + IR + Compiler Architecture v0.1
+
+### 34.1 Three risk profiles
+
+| | Profile A (LOW) | Profile B (MED) | Profile C (HIGH) |
+|--|-----------------|------------------|--------------------|
+| **Example** | Q&A over docs; balance lookup | Multi-step data workflow; report generation | Payments, IAM, deploys, deletions, external comms |
+| **Contract** | identity, discovery, interface, effects (READ-only), permissions_required, output validator | + composition, preconditions/postconditions, state.reads/writes, idempotency, failure_semantics | + full contract (signature, invariants, secret_requirements, human_gate, compensation_ref, cost_hints, eval_suite) |
+| **IR** | Single normalized IR (LogicalIR only) | Single CapabilityIR + Manifest | Logical CapabilityIR + Physical ExecutionIR + signed immutable Manifest |
+| **Compiler passes (mandatory)** | 1, 2, 6, 7, 9, 10, 15, 19, 20 | + 3, 4, 5, 8, 11, 13, 16 | + 12, 14, 17, 18 (all 20 passes) |
+| **Runtime gates** | JIT auth for reads; schema validator | + state CAS, retry-with-idempotency, compensation | + human approval gate, step-level guardrail, monotonic policy update, forward-only recovery for IRREVERSIBLE |
+| **Reproducibility** | Structural | Structural + Behavioral (idempotent replay) | Structural + Behavioral + attested provenance chain |
+| **Auditability** | OTel traces | OTel + PROV-lite | OTel + full W3C PROV + in-toto attestations |
+
+### 34.2 What the LLM MAY do (all profiles)
+- Task interpretation and decomposition (proposal only)
+- Retrieval query formulation
+- Candidate ranking
+- Argument value suggestion
+- Policy-narrowing proposals (never expansions without approval)
+- Diagnosis of failures for human review
+
+### 34.3 What the LLM MUST NOT do
+- Assert contract validity
+- Grant permissions
+- Waive validators
+- Modify a frozen manifest
+- Expand policy without approval (per Progent's monotonic confinement — C13)
+- Substitute a tool at runtime without re-authorization
+
+---
+
+## 35. KNOWLEDGE-BASE EXPORT
+
+```yaml
+- id: K001
+  claim: "Deterministic per-call privilege enforcement reduces attack success on adversarial agent benchmarks."
+  claim_type: EMPIRICAL_RESULT
+  source: "Progent (arXiv 2504.11703)"
+  source_class: PREPRINT_RESULT
+  evidence: "ASR 41.2% → 2.2% on AgentDojo (v1); ~0% with manual policies (v2)"
+  counterevidence: "Benchmark-bounded; no enterprise field study; policy completeness assumption"
+  confidence: HIGH (in-benchmark), MEDIUM (generalization)
+  architecture_implication: "Enforcement plane must include deterministic policy check per call."
+  implementation_implication: "Ship a policy DSL + PDP + wrapper around every tool call."
+  revision_trigger: "Enterprise field study contradicts, OR benchmark leakage disclosed."
+
+- id: K002
+  claim: "LLM-driven policy updates must be constrained to monotonic narrowing without human approval."
+  claim_type: FORMAL_RESULT + EMPIRICAL_RESULT
+  source: "Progent (SMT-based update analysis)"
+  source_class: PREPRINT_RESULT
+  evidence: "SMT solver classifies each proposed policy update as narrowing (auto) or expansion (approval)"
+  counterevidence: "Applies only to Progent's DSL; richer policies may have undecidable narrowing checks"
+  confidence: HIGH
+  architecture_implication: "Any dynamic policy layer must ship with an equivalence/inclusion checker."
+  implementation_implication: "Use SMT or lattice-based inclusion check; block auto-application otherwise."
+  revision_trigger: "Broader DSL with undecidable inclusion adopted."
+
+- id: K003
+  claim: "MCP is a transport+discovery protocol; not a semantic contract."
+  claim_type: STANDARD
+  source: "MCP spec 2026-07-28"
+  source_class: STANDARD
+  evidence: "Tool metadata = name, description, input/output schema; annotations should be considered untrusted"
+  counterevidence: "MCP extensions (Skills, Tasks) add richer semantics but remain optional"
+  confidence: HIGH
+  architecture_implication: "Overlay Enterprise Capability Contract required."
+  implementation_implication: "Fetch MCP tool metadata; attach separately-signed contract by capability_id."
+  revision_trigger: "MCP adopts effect/permission/precondition semantics at core spec level."
+
+- id: K004
+  claim: "Runtime step-level guardrails add measurable safety over ReAct baselines."
+  claim_type: PEER_REVIEWED_RESULT
+  source: "ToolSafe / TS-Flow (ACL 2026 Findings)"
+  source_class: PEER_REVIEWED_RESULT
+  evidence: "65% avg reduction in harmful invocations; +10% benign task completion under injection"
+  counterevidence: "Latency cost; false-positive impact on utility not fully characterized in enterprise settings"
+  confidence: MEDIUM-HIGH
+  architecture_implication: "Runtime step-guardrail should be included as defense-in-depth."
+  implementation_implication: "Inline TS-Guard-style check before each tool call."
+  revision_trigger: "Alternative defense subsumes step-guardrail benefit."
+
+- id: K005
+  claim: "Passing tests does not equal semantic validation of a skill."
+  claim_type: PREPRINT_RESULT (survey observation)
+  source: "Agent Skills survey (arXiv 2605.07358)"
+  source_class: PREPRINT_RESULT
+  evidence: "SkillWeaver hones via tests/docs; noted as 'weaker than full semantic verification'"
+  counterevidence: "None retrieved"
+  confidence: HIGH
+  architecture_implication: "Postconditions + semantic validators must be first-class contract fields."
+  implementation_implication: "validation.semantic_validator_ref in Capability Contract."
+  revision_trigger: "Reliable formal-verification techniques mature for LLM-generated code."
+
+- id: K006
+  claim: "Content-addressed, digest-pinned identity is required for reproducibility."
+  claim_type: STANDARD + ENGINEERING_PRACTICE
+  source: "SLSA, in-toto, Nix, Bazel"
+  source_class: STANDARD
+  evidence: "Independent reproducible-build ecosystems converge on digest-addressing"
+  counterevidence: "Overhead in low-trust environments"
+  confidence: HIGH
+  architecture_implication: "Every capability_ref includes {id, version, digest}; manifest hash includes them all."
+  implementation_implication: "Registry stores content-addressed artifacts + attestations."
+  revision_trigger: "None credible."
+
+- id: K007
+  claim: "Effects and permissions are conceptually distinct fields."
+  claim_type: INFERENCE (from PL effect systems + capability security)
+  source: "Lucassen & Gifford; Miller et al.; general PL/Sec literature"
+  source_class: SYSTEMS_ANALOGY + FORMAL_RESULT (in PL)
+  evidence: "Effects describe possible actions; permissions authorize a principal to take actions."
+  counterevidence: "In some simple regimes, permission scopes fully characterize effects."
+  confidence: HIGH
+  architecture_implication: "Two separate contract fields: `effects[]` and `security.permissions_required`."
+  implementation_implication: "Effect analysis pass distinct from permission derivation pass."
+  revision_trigger: "Empirical study shows one field derivable from the other in practice."
+
+- id: K008
+  claim: "State read/write sets enable static race detection."
+  claim_type: FORMAL_RESULT (from PL/DB) + INFERENCE for agents
+  source: "PL race-freedom-by-construction literature; DB concurrency"
+  source_class: FORMAL_RESULT
+  evidence: "Write-set intersection = concurrent write conflict."
+  counterevidence: "Requires exhaustive declaration; wildcards weaken guarantee."
+  confidence: MEDIUM-HIGH
+  architecture_implication: "state.reads / state.writes required in contract; scheduler enforces disjointness."
+  implementation_implication: "TOPOLOGY_SELECTION pass checks disjointness per level."
+  revision_trigger: "Alternative concurrency model (e.g., pure CRDT everywhere) removes need."
+
+- id: K009
+  claim: "JIT authorization is safer than plan-time authorization."
+  claim_type: INFERENCE (TOCTOU) + STANDARD (MCP Auth)
+  source: "OS security literature (capability security); MCP Authorization spec"
+  source_class: STANDARD + SYSTEMS_ANALOGY
+  evidence: "State/principal may change between plan and execute; MCP Authorization enforces OAuth2 at invocation."
+  counterevidence: "Runtime cost; may impede latency-sensitive reads."
+  confidence: HIGH
+  architecture_implication: "Manifest carries request template; runtime evaluates."
+  implementation_implication: "PDP integration at execution boundary; short-lived tokens."
+  revision_trigger: "Empirical study shows plan-time authorization equally safe under adversarial conditions."
+
+- id: K010
+  claim: "A single manifest may be sufficient for LOW/MED risk; multi-layer IR only justified at HIGH risk."
+  claim_type: DESIGN_RECOMMENDATION
+  source: "This report (INFERENCE from compiler/DB engineering)"
+  source_class: INFERENCE
+  evidence: "No direct empirical evidence for agents."
+  counterevidence: "None; simplicity argument stands unless refuted."
+  confidence: MEDIUM
+  architecture_implication: "Profile-tiered architecture."
+  implementation_implication: "Single IR module by default; opt-in Physical IR at Profile C."
+  revision_trigger: "Study shows single-IR sufficient at all risk levels, OR single-IR unsafe at MED."
+```
+
+---
+
+### Final epistemic summary
+
+The layered architecture presented here rests on:
+- **Direct empirical evidence** for the *value* of deterministic enforcement (Progent) and runtime step-guardrails (ToolSafe).
+- **Standards** (MCP + MCP Authorization + JSON Schema + SLSA/in-toto + OAuth 2.1 + Cedar/OPA) for identity, transport, and authorization.
+- **Formal foundations** (effect systems, refinement types, capability security, Sagas, optimistic concurrency) as INFERENCE — analogically transferred with acknowledgment.
+- **Design recommendations** (contract-field set, IR layering, compiler pass table, three-profile tiering) which are *not* empirically validated as a whole and are marked accordingly.
+
+The single largest research gap is **contract-field ablation**: no study in the retrieved literature isolates the contribution of individual contract fields to enterprise safety metrics. The proposed ladder (§7) is the recommended experimental design to close this gap. Until it is run, all field-necessity claims should be read as **DESIGN_RECOMMENDATION** informed by convergent evidence from adjacent fields.

@@ -1,0 +1,1260 @@
+# Enterprise Agent State Ownership Architecture v0.1
+
+---
+
+## 1. EXECUTIVE CONCLUSION
+
+### 1.1 Belastbare Kernerkenntnisse
+
+**E1.** Working Context ist eine *Projektion* auf State, nicht State selbst. Vector indexes sind leicht zu befüllen und schwer zu invalidieren; Cache-Layer verlängern die Halbwertszeit jedes Dokuments; und Agent Memory hält älteren State über Turns hinweg am Leben. Stale Context erzeugt confident wrong answers, weil das Modell sich auf Evidenz stützt, die *einmal* wahr war. **[EMPIRICAL_RESULT: FutureAGI 2026 customer audits]**
+
+**E2.** Der CoALA-Rahmen (Working / Episodic / Semantic / Procedural Memory) hat sich als de-facto Taxonomie durchgesetzt. Das CoALA-Paper übersetzte diese drei in ein AI-Agent-Framework 2023 und gab dem Feld eine weitgehend akzeptierte Sprache. CoALA organisiert Agents entlang dreier Dimensionen: Information Storage, Action Space und Decision-Making Loop. Die Memory-Taxonomie sitzt in der Information-Storage-Dimension: Working Memory für unmittelbaren Kontext und drei Langzeit-Stores für Events, Fakten und Prozeduren. IBM, MongoDB, LangChain, Letta und Mem0 verwenden alle eine Version dieses Modells. **[PEER_REVIEWED_RESULT: CoALA, arXiv:2309.02427]**
+
+**E3.** LLM-Agent Memory-Typen haben KEINE architektonisch erzwungene Typenisolation. Soar und ACT-R nahmen an, dass Memory-Typ-Grenzen von der Architektur erzwungen wurden. LLM-Agents haben keine solche Runtime-Enforcement: ihre Memory-Typen sind textuelle Einträge in einem Store, und ein Procedural Skill, ein Semantic Fact und ein Episodic Trace sind oft dieselbe Art Objekt, nur durch ein Tag unterschieden. **[PEER_REVIEWED_RESULT: Always-On Agents Survey 2026]**
+
+**E4.** TOCTOU ist ein strukturelles Problem von Multi-Step Agent Execution. TOCTOU-Bench evaluierte 66 realistische Tasks über Finance, File Systems und Databases. Unter Baseline-Bedingungen enthalten 12% der Agent-Execution-Trajectories einen exploitbaren TOCTOU Gap. Dies ist kein Corner Case: es ist eine strukturelle Eigenschaft von Agents, die Tool Calls über mehrere Schritte ausführen. **[PREPRINT_RESULT: TOCTOU-Bench, arXiv:2508.17155]**
+
+**E5.** Stale Context ist 2026 der häufigste RAG-Incident-Typ. In 2026 ist Stale Context der einzeln häufigste RAG-Incident in Customer-Audits — häufiger als Retrieval Misses, häufiger als Chunking Bugs. **[EMPIRICAL_RESULT: FutureAGI 2026]**
+
+**E6.** Durable Execution Engines (Temporal/Cadence) lösen Run-vs-Workflow-State-Separation architektonisch. Jede Temporal Workflow Execution hat exklusiven Zugang zu ihrem lokalen State. Sie läuft concurrent zu allen anderen Workflow Executions und kommuniziert mit anderen Workflow Executions über Signals und mit der Umgebung über Activities. **[ENGINEERING_PRACTICE]**
+
+**E7.** Consolidation (Episodic → Semantic) verliert ~20% der codierten Fakten. Naive Summarization Pipelines verlieren ungefähr 20% der codierten Fakten, eine Zahl, die konsistent von Practitioners berichtet wird. **[EMPIRICAL_RESULT: practitioner reports]**
+
+### 1.2 Wichtigste Non-Findings
+
+- **Keine** empirisch validierte Enterprise-Standard-Architektur für Agent State Ownership existiert.
+- **Keine** peer-reviewed Studie vergleicht systematisch State-Modelle (Snapshot vs. Live Read vs. Hybrid) in realen Agent-Deployments.
+- **Keine** standardisierte Spezifikation für FreshnessRequirement oder StateContract existiert.
+- Konkrete TTL-/Timeout-Werte für Freshness sind domänenabhängig und nicht generalisierbar.
+
+### 1.3 Größte Architekturkonsequenzen
+
+1. **Context ≠ State**: Ein Harness benötigt eine explizite Grenze zwischen der Context-Projektion und den autoritativen State-Stores.
+2. **Freshness muss maschinenlesbar sein**: Version/Revision/Observation-Timestamp muss mit jedem State-Fragment im Context transportiert werden.
+3. **Side-effectful Operations brauchen Pre-Effect-Refresh**: Das "Plan against snapshot, execute against refreshed state"-Pattern ist der sicherste Hybrid.
+4. **Memory ist default-advisory**: Persistent Memory, für das eine aktuelle autoritative Quelle existiert, muss als advisory behandelt werden.
+5. **Run State und Workflow State sind architektonisch trennbar** und sollten bei Long-Running Agents getrennt werden.
+
+---
+
+## 2. SOURCE QUALITY MAP
+
+| Source Type | Beispiele | Quality Rating | Limitation |
+|---|---|---|---|
+| Peer-Reviewed Agent Memory Research | CoALA (arXiv:2309.02427), Generative Agents (Park et al. 2023), Memory surveys (arXiv:2512.13564, arXiv:2602.06052, arXiv:2603.07670) | HIGH for taxonomy, LOW for state ownership | Fokus auf Memory-Typen, nicht auf Authority/Freshness/Consistency |
+| Preprint: TOCTOU in Agents | TOCTOU-Bench (arXiv:2508.17155), OpenPort Protocol | MEDIUM | Limited task coverage; not yet replicated |
+| Preprint: Concurrency in Multi-Agent Systems | arXiv:2606.17182 (Verified Detection) | MEDIUM-HIGH | Formal model, limited empirical validation |
+| Preprint: Stale Context (STALE benchmark) | arXiv:2605.06527 | MEDIUM | Measures LLM *detection* of staleness, not architectural mitigation |
+| Engineering Practice: Durable Execution | Temporal, Cadence, AWS Step Functions | HIGH for workflow state | Not Agent-specific; adaptation is inference |
+| Engineering Practice: Distributed Systems | Lamport, MVCC, CAS, Linearizability | HIGH (foundational) | Direct agent applicability is SYSTEMS_ANALOGY |
+| Vendor Documentation | LangGraph, Mem0, Letta, Zep | LOW-MEDIUM | Marketing-adjacent; no efficacy studies |
+| Industry Reports: Stale Context | FutureAGI audits, Redis blog, Streamkap | MEDIUM | Practitioner-reported, not peer-reviewed |
+| Security Standards | CWE-367, OWASP AISVS C9 | HIGH for problem taxonomy | Not Agent-specific until TOCTOU-Bench |
+
+---
+
+## 3. STATE TERMINOLOGY / ONTOLOGY
+
+### 3.1 Definitive Begriffstrennung
+
+| Term | Definition | ≠ Contrast |
+|---|---|---|
+| **State** | Ein spezifischer Wert oder Zustand einer identifizierbaren Ressource zu einem Zeitpunkt | ≠ Context (Projektion) |
+| **Authority** | Das Recht und die epistemische Begründung, einen State-Wert als definitiv zu behandeln | ≠ Storage Ownership (wo gespeichert) |
+| **Ownership** | Verantwortlichkeit für Lifecycle-Management eines State-Artefakts | ≠ Authority (epistemischer Status) |
+| **Source of Truth** | Die Instanz, die den autoritativen aktuellen Wert *für einen bestimmten Datentyp zu einem bestimmten Zeitpunkt* hält | ≠ "Single Source of Truth" (unqualifiziert) |
+| **Context** | Die dem Modell für die aktuelle Inferenz präsentierte Information | ≠ Autoritativer State |
+| **Memory** | Persistierte Information aus vergangenen Interaktionen | ≠ Current Truth |
+| **Snapshot** | Ein zeitpunktgebundener, immutabler Abzug eines State | ≠ Live State (aktuell abgefragter Wert) |
+| **Freshness** | Eigenschaft eines beobachteten Werts, die angibt, ob er für eine Operation noch gültig ist | ≠ Simple Age (Zeit seit Observation) |
+| **Read** | Abfrage eines State-Werts | ≠ Validated Read (Read + Freshness/Revision-Check) |
+| **Write** | Mutation eines State-Werts | ≠ Committed State Change (Write + Validation + Persistence) |
+| **Current Value** | Der Wert, den die autoritative Quelle *jetzt* liefern würde | ≠ Observed Value (der zuletzt gelesene Wert) |
+
+### 3.2 Epistemische Kategorie-Tags
+
+Verwendung im gesamten Dokument:
+
+```
+EMPIRICAL_RESULT         - Messbare Ergebnisse aus Experimenten/Audits
+PEER_REVIEWED_RESULT     - Publiziert + Review-Prozess
+PREPRINT_RESULT          - Publiziert, nicht peer-reviewed
+FORMAL_RESULT            - Mathematischer/formaler Beweis
+STANDARD                 - Etablierter externer Standard
+ENGINEERING_PRACTICE     - Bewährt in Produktion, nicht spezifisch Agent-validiert
+SYSTEMS_ANALOGY          - Übertragung aus Distributed Systems / DB
+INFERENCE                - Logische Ableitung aus mehreren Quellen
+DESIGN_RECOMMENDATION    - Begründete Empfehlung ohne direkte Validierung
+PROPOSED_STANDARD        - Neuer Vorschlag dieses Dokuments
+OPEN_QUESTION            - Ungeklärt
+INSUFFICIENT_EVIDENCE    - Nicht genügend Daten
+```
+
+---
+
+## 4. CLAIM–EVIDENCE–COUNTEREVIDENCE MATRIX
+
+| ID | Claim | Evidence | Counterevidence | Confidence | Type |
+|---|---|---|---|---|---|
+| C1 | Working Context ist Projektion, nicht State | Stale Context als häufigster RAG-Incident; Agent Memory hält älteren State am Leben; Model gründet auf einst wahre Evidenz | Für rein konversationelle Agents ohne externe Systeme *ist* Context effektiv der einzige State | HIGH | INFERENCE + EMPIRICAL_RESULT |
+| C2 | Agent sollte nicht Source of Truth für externen Business State sein | Agent liest State von externer Quelle, speichert Ergebnis im Context und handelt später darauf. Agent re-validiert nie; er vertraut dem gecachten Ergebnis. | Für intern erzeugte Artefakte (generierter Code, Report) *ist* der Agent Ersterzeuger | HIGH | INFERENCE + PREPRINT_RESULT |
+| C3 | Memory ist default-advisory | Naive Summarization verliert ~20% der Fakten; Agent Memory darf Live Retrieval nicht outranken; eine frühere Tool-Observation kann älter sein als das autoritative System of Record | Wenn kein anderes System of Record existiert (z.B. User-Präferenzen nur in Memory), ist Memory authoritative | MEDIUM-HIGH | INFERENCE + EMPIRICAL_RESULT |
+| C4 | Run State und Workflow State sollten getrennt werden | Temporal: Workflow Execution hat exklusiven Zugang zu lokalem State, kommuniziert über Signals und Activities; Vollständiger State (lokale Variablen, Fortschritt) wird von der Plattform autosaved | Für kurzlebige, single-step Agents ist Trennung Overhead ohne Nutzen | MEDIUM-HIGH | ENGINEERING_PRACTICE + INFERENCE |
+| C5 | Freshness ist besser versions-/dependency-basiert als TTL-basiert | Kein Halluzinations-Problem: LLM hat echte Daten abgerufen und korrekt darüber reasoning betrieben. Die Daten waren nur alt. Und "alt" im LLM-Context bedeutet "falsch." | Time-basierte TTLs sind operativ einfacher; für viele Low-Risk-Reads ausreichend | MEDIUM | INFERENCE + ENGINEERING_PRACTICE |
+| C6 | TOCTOU ist strukturelles Agent-Problem | 12% der Agent-Execution-Trajectories enthalten exploitbaren TOCTOU Gap unter Baseline. Strukturelle Eigenschaft. | Tool-Fusing (atomic check-and-act) eliminiert es nahezu vollständig; Problem liegt in Tool-Design, nicht zwingend in Agent-Architektur | HIGH | PREPRINT_RESULT |
+| C7 | Memory-Typen brauchen Governance-Enforcement | LLM-Agents haben keine Runtime-Enforcement; Memory-Typen sind textuelle Einträge; CoALA behandelt Module als funktional isolierte Black Boxes ohne Authority Hierarchies oder Scope Gates | Für single-use read-only Agents ist Governance-Overhead nicht gerechtfertigt | HIGH | PEER_REVIEWED_RESULT |
+| C8 | Snapshot + Pre-Effect Live Refresh ist sinnvoller Hybrid | OpenPort: High-Risk Writes erfordern delayed Operator Approval; State Witness bindet Write Intent an witness hash; execute-time revalidation erforderlich | Für idempotente, rein additive Operationen ist Pre-Effect Refresh unnötiger Latenz-Overhead | MEDIUM-HIGH | PREPRINT_RESULT + ENGINEERING_PRACTICE |
+
+---
+
+## 5. STATE CLASSIFICATION RESULT
+
+### 5.1 Ontologie-Prüfung der Ausgangskategorien
+
+| Kategorie | Beibehaltung | Begründung | Orthogonalität |
+|---|---|---|---|
+| **WORKING_CONTEXT** | ✅ BEHALTEN — aber als *Meta-Kategorie* (Projektion, nicht Store) | Zentral. Aber kein State-Store, sondern Projektion auf andere State-Klassen | Orthogonal: Alle anderen States *projizieren* in Working Context |
+| **RUN_STATE** | ✅ BEHALTEN | Ephemerer Zustand des aktuellen Execution-Runs | Überlappung mit Workflow State bei simplen Tasks → Profil-abhängig |
+| **WORKFLOW_STATE** | ✅ BEHALTEN | Durable Kontrollzustand über Runs hinaus | Trennbar von Run State bei Long-Running/Durable Agents |
+| **ARTIFACT_STATE** | ✅ BEHALTEN | Versionierte Outputs sind eigenständige Entitäten mit eigenem Lifecycle | Teilüberlappung: Artifacts *innerhalb* eines Runs vs. persistierte Artifacts |
+| **EXTERNAL_STATE** | ✅ BEHALTEN | Fremdsysteme als autoritative Quellen | Klar orthogonal; Hauptquelle von TOCTOU-Problemen |
+| **POLICY_STATE** | ✅ BEHALTEN — konsolidiert als Subtyp von External State in einfachen Profilen | Authorization/Governance ist sicherheitskritisch und hat eigene Freshness-Anforderungen | Teilüberlappung mit External State (Policy *ist* oft externer State), aber Freshness-Semantik so kritisch, dass separate Behandlung empfohlen |
+| **EPISODIC_MEMORY** | ✅ BEHALTEN | CoALA definiert Episodic Memory als Speicherung von "experience from earlier decision cycles", das log-ähnliche Record dessen, was in welcher Reihenfolge passiert ist. CoALA unterscheidet episodic (instanzspezifisch, kontexterhaltend) von semantic (abstrahiert, generalisiert) und procedural (Skills, Code). | Orthogonal zu Semantic und Procedural |
+| **SEMANTIC_MEMORY** | ✅ BEHALTEN | Abstrahiertes, generalisiertes Wissen | Klar orthogonal |
+| **PROCEDURAL_MEMORY** | ✅ BEHALTEN | Procedural Memory muss vom Designer mit korrektem Code initialisiert werden. Schreiben in Procedural Memory ist signifikant riskanter als Schreiben in Episodic oder Semantic Memory, da es leicht Bugs oder Subversion einführen kann. | Orthogonal; höchste Write-Restriktion |
+| **DERIVED_STATE** | ✅ BEHALTEN als eigene Klasse | Caches, Embeddings, Summaries — benötigen explizite Provenance | Teilüberlappung mit Semantic Memory (Consolidation erzeugt Derived State aus Episodic) |
+
+### 5.2 Fehlende Kategorie
+
+| Neue Kategorie | Begründung | Status |
+|---|---|---|
+| **COORDINATION_STATE** | Multi-Agent Systems fügen einen Coordination Layer hinzu, den kein Single-Agent Memory Design derzeit gut handhabt. Locks, Leases, Signaling, Handoff-State zwischen Agents/Sub-Agents. | OPTIONAL — nur für Multi-Agent Profiles |
+
+### 5.3 Konsolidierungsentscheidung
+
+- **POLICY_STATE** bleibt separat (nicht mit EXTERNAL_STATE zusammengelegt), weil Freshness-Verletzung bei Policy direkt zu Security-Failures führt.
+- **DERIVED_STATE** bleibt separat, weil Invalidation-Semantik fundamental anders ist (dependency-basiert statt time-basiert).
+- **WORKING_CONTEXT** wird nicht als "State Store" behandelt, sondern als projektive Schicht über alle anderen.
+
+---
+
+## 6. STATE AUTHORITY MATRIX
+
+| STATE_TYPE | SOURCE_OF_TRUTH | OWNER | AUTHORITATIVE_FOR | READERS | WRITERS | PROPOSED_WRITERS | VERSIONING | FRESHNESS_MODEL | CONSISTENCY_MODEL | SNAPSHOT_ALLOWED | LIVE_READ_REQUIRED_WHEN | INVALIDATION_TRIGGER | PROVENANCE_REQUIRED | RISK_NOTES |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **WORKING_CONTEXT** | Komposit: projiziert aus allen anderen | Harness Runtime | Nichts — ist Projektion | LLM, Runtime | Runtime (assembly) | N/A | Per-assembly-id | Vererbt von Quell-States | N/A (vererbt) | Ja (Snapshot der Projektion) | Wenn Quell-States invalidiert | Source-State-Änderung | Ja: Quell-Refs + observed_at | Context ≠ Truth; Primary Failure Mode |
+| **RUN_STATE** | Harness Runtime Store | Harness Runtime | Current run progress, intermediate values, tool results | Runtime, LLM (projiziert), Debugger | Runtime | Agent (via Harness) | run_id + step_sequence | Event-basiert (nach jedem Step) | Read-your-writes | Ja (für Audit/Replay) | Innerhalb des Runs: immer aktuell | Run completion/abort | Ja | Ephemer; wird bei Run-Ende archiviert |
+| **WORKFLOW_STATE** | Durable Workflow Store (Event Log oder State Machine) | Workflow Engine | Node status, transitions, approvals, retries | Runtime, Operators, Audit | Workflow Engine | Agent (proposes transitions) | workflow_id + event_sequence | Event-basiert | Serializable innerhalb eines Workflows | Ja (für Replay) | Für Transition-Guards | Workflow completion, timeout, cancel | Ja | Long-running; Saga-Kompensation bei Failure |
+| **ARTIFACT_STATE** | Artifact Store (Object Store, Git, Registry) | Harness/User | Generierte Outputs, Files, Code, Reports | Runtime, User, Downstream | Runtime (create), User (edit) | Agent (proposes creation/modification) | content_hash / revision / version_id | Version-basiert | Snapshot Isolation für Reads | Ja (immutable versions) | Für mutable Artifacts: vor Overwrite | Neue Version erstellt | Ja | Immutable Versions bevorzugen |
+| **EXTERNAL_STATE** | Externes System (CRM, ERP, Git, DB) | Externes System | Business-Daten, Ressourcen | Runtime (via API/Tool) | Runtime (via API/Tool) | Agent (proposes writes) | Resource-eigene Revision/ETag | Version-basiert + Time-basiert | Depends on external system | Ja (für Planning) | Vor side-effectful Writes | Externe Mutation; TTL expiry | Ja | TOCTOU-Hauptquelle |
+| **POLICY_STATE** | Policy Engine / IAM / Governance | Security/Compliance | Permissions, Approvals, Constraints | Runtime (mandatory pre-execution) | Policy Admin | N/A — Agent hat keine Write-Authority | Policy version / epoch | Event-basiert (policy deployment) | Strong: mindestens Read-your-writes | Nur für Low-Risk Reads | Vor jeder privilegierten Operation | Policy deployment/change | Ja | TOCTOU-Problem: IAM Permissions, Resource Policies oder externe Umgebung ändern sich zwischen Initial Authorization/Planning Phase und tatsächlicher Execution |
+| **EPISODIC_MEMORY** | Memory Store | Harness/User | Vergangene Interaktionen, Ereignisse | Runtime (retrieval), LLM | Runtime (append), Consolidation (edit) | Agent (append) | entry_id + timestamp | Time/dependency-basiert | Eventual Consistency | Ja | Selten — History ändert sich nicht rückwirkend | Correction, Consolidation, Expiration | Ja: original source, confidence | Advisory wenn autoritativer Quellstate existiert |
+| **SEMANTIC_MEMORY** | Memory Store | Harness/User/Consolidation | Generalisiertes Wissen, User-Preferences | Runtime (retrieval), LLM | Consolidation, Manual Update | Agent (proposes updates) | entry_id + revision | Dependency-basiert (source episodes) | Eventual Consistency | Ja | Wenn hohe Accuracy erforderlich: verify vs. authoritative source | Source-Episode-Invalidation, Manual Override | Ja: source episodes, confidence, valid_from/until | ~20% Faktenverlust bei naiver Summarization; Consolidation ohne Deduplication kann catastrophic forgetting einführen |
+| **PROCEDURAL_MEMORY** | Skill Registry / Code Repository | System Designer / DevOps | Skills, Playbooks, Tool Instructions | Runtime | System Designer (write), Agent (RESTRICTED) | Agent (propose only) | skill_version / code_hash | Version-basiert | Strong: latest deployed version | Ja (deployed immutable version) | Bei Capability Binding | New deployment, skill deprecation | Ja | Schreiben in Procedural Memory ist signifikant riskanter — kann Bugs oder Designer-Intent-Subversion einführen |
+| **DERIVED_STATE** | Computation (Transformation von Source-States) | Harness/Cache Layer | Caches, Embeddings, Indexes, Summaries | Runtime, LLM (via Context) | Derivation Pipeline | N/A | derived_version + source_revision_vector | Dependency-basiert | Eventual; invalidiert wenn Source divergiert | Ja (explizit: "derived from source_rev X") | Wenn Source-Revision-Check scheitert | Source-State-Mutation | Ja: source_refs + source_revisions | Nie authoritative wenn Source verfügbar |
+
+---
+
+## 7. SOURCE-OF-TRUTH MODEL
+
+### 7.1 Prinzip: Source of Truth ist datentyp- und zeitpunktgebunden
+
+**[DESIGN_RECOMMENDATION]**
+
+"Source of Truth" darf nur mit Präzisierung verwendet werden:
+- **Für welchen Datentyp**: z.B. Customer Record, Policy, Run Progress
+- **Zu welchem Zeitpunkt**: die autoritative Quelle zum Zeitpunkt der Abfrage
+
+### 7.2 Authority Hierarchy
+
+```
+LEVEL 1 — AUTHORITATIVE EXTERNAL SYSTEM
+   CRM für Customer-Daten
+   IAM für Permissions
+   Git für Code
+   Database für Business-Records
+   → Immer vorrangig wenn verfügbar und erreichbar
+
+LEVEL 2 — HARNESS-MANAGED AUTHORITATIVE STATE
+   Workflow State (Harness besitzt den Workflow)
+   Run State (Harness besitzt den Run)
+   Artifact State (Harness hat generiert)
+   → Authoritative für intern erzeugte Entitäten
+
+LEVEL 3 — ADVISORY / DERIVED
+   Memory (episodisch, semantisch)
+   Derived State (Caches, Embeddings)
+   Prior Tool Results (im Context)
+   → Advisory; muss gegen Level 1/2 verifiziert werden
+   → Wird authoritative NUR wenn keine Level-1/2-Quelle existiert
+
+LEVEL 4 — UNVALIDATED
+   LLM-generierte Inhalte
+   Halluzinationen
+   Unbestätigte Inferenzen
+   → Nie authoritative ohne Validierung
+```
+
+### 7.3 Kann ein Agent Source of Truth sein?
+
+**Antwort: Bedingt, und nur für bestimmte State-Klassen.** **[INFERENCE]**
+
+| Frage | Antwort |
+|---|---|
+| Kann Agent Source of Truth für External Business State sein? | **NEIN**. Agent liest State, speichert im Context, handelt später. Re-validiert nie. Vertraut gecachtem Ergebnis. |
+| Kann Agent Source of Truth für Artifacts sein, die er *erzeugt* hat? | **JA**, solange das Artifact noch nicht an ein externes System committed ist |
+| Kann Agent Source of Truth für seine eigene Reasoning-History sein? | **JA** (Episodic Memory eines Runs) |
+| Kann Agent Source of Truth für Policies sein? | **NEIN** |
+| Kann Agent Source of Truth für Skills/Procedures sein? | **NEIN** (Write ist riskant; kann Bugs oder Designer-Intent-Subversion einführen) |
+
+---
+
+## 8. READ / WRITE OWNERSHIP MODEL
+
+### 8.1 Agent-Rollen bzgl. State
+
+**[DESIGN_RECOMMENDATION]**
+
+| Rolle | Beschreibung | State-Klassen |
+|---|---|---|
+| **READER** | Liest State über Harness-vermittelte APIs | Alle |
+| **PROPOSER** | Schlägt State-Änderungen vor, die vom Harness validiert werden | External State, Policy State, Procedural Memory |
+| **EXECUTOR** | Führt validierte State-Mutations aus (über Tools) | External State (after approval), Artifact State |
+| **TRANSFORMER** | Transformiert Input-State in Output-State | Run State (intermediate values) |
+| **APPENDER** | Fügt neue Einträge hinzu (append-only) | Episodic Memory, Run Trace |
+| **CREATOR** | Erzeugt neue Artefakte | Artifact State |
+
+### 8.2 Write-Taxonomie
+
+| Write-Typ | Semantik | Beispiel |
+|---|---|---|
+| **DIRECT_WRITE** | Sofort committed, keine zusätzliche Approval | Run State update, Episodic Memory append |
+| **PROPOSED_WRITE** | Agent schlägt vor, Harness/Human validiert | CRM Update, Production Deployment |
+| **CONDITIONAL_WRITE** | Write mit expected_revision Precondition | Git push, CRM conditional update |
+| **GUARDED_WRITE** | Write mit Policy-Precondition-Check | Any write requiring authorization |
+| **COMPENSATABLE_WRITE** | Write mit definierter Compensation-Action | Financial transactions, reversible state changes |
+
+---
+
+## 9. WORKING CONTEXT vs AUTHORITATIVE STATE
+
+### 9.1 Zentrale Hypothese: Bestätigt
+
+**H1: Working Context ist niemals automatisch authoritative State.** ✅ **CONFIRMED**
+
+Evidence:
+
+- Ein Model kann faithfully gegrounded sein in einer obsoleten Policy.
+- LangGraph liest State bei jedem Step und aktualisiert bei Step-Completion; was am Start stale ist, bleibt stale für diesen Step.
+- Context Confusion: Irrelevante Tools oder Dokumente lenken ab. Context Clash: Widersprüchliche Information im Context führt das Model irre.
+
+### 9.2 Context als Projektion — Architekturmodell
+
+```
+┌─────────────────────────────┐
+│      WORKING CONTEXT        │  ← Was das LLM sieht
+│  ┌───────────────────────┐  │
+│  │ System Prompt          │  │  ← Procedural Memory (projected)
+│  │ Task Description       │  │  ← Run State (projected)
+│  │ Retrieved Knowledge    │  │  ← Semantic Memory (projected)
+│  │ Conversation History   │  │  ← Episodic Memory (projected)
+│  │ Tool Results           │  │  ← External State (snapshot)
+│  │ Policy Constraints     │  │  ← Policy State (snapshot)
+│  │ Prior Step Outputs     │  │  ← Run State (snapshot)
+│  │ Freshness Metadata     │  │  ← REQUIRED ADDITION
+│  └───────────────────────┘  │
+└─────────────────────────────┘
+         ↑ PROJECTION ↑
+         │ (selected, compressed, assembled by Runtime)
+         │
+┌────────┴────────────────────────────────────────────┐
+│  AUTHORITATIVE STATE STORES                          │
+│  Run State │ Workflow State │ Artifact State         │
+│  External State │ Policy State                       │
+│  Episodic Memory │ Semantic Memory │ Procedural Mem  │
+│  Derived State                                       │
+└──────────────────────────────────────────────────────┘
+```
+
+### 9.3 Erforderliche Provenance-/Freshness-Metadaten im Context
+
+**[PROPOSED_STANDARD]**
+
+Jedes State-Fragment im Working Context sollte (maschinell, für Runtime-Verarbeitung) diese Metadaten tragen:
+
+```yaml
+context_fragment:
+  content: "..."
+  source_type: EXTERNAL_STATE | EPISODIC_MEMORY | ...
+  source_ref: "crm://customer/42"
+  observed_at: "2026-09-18T10:15:00Z"
+  observed_revision: "rev-194"
+  freshness_class: FRESH | STALE | UNKNOWN
+  authority_class: AUTHORITATIVE | ADVISORY | DERIVED
+  staleness_note: "observed 12min ago; use for planning, refresh before write"
+```
+
+Evidence für Notwendigkeit: Jedes Stück Context, das an einen Agent geliefert wird, sollte Metadaten über Quelle, Freshness und die Policies tragen, die den Zugang erlaubt haben.
+
+### 9.4 Wann Context invalidiert werden muss
+
+| Trigger | Reaktion |
+|---|---|
+| Source-State hat neue Revision seit Observation | Mark STALE; refresh vor Effect |
+| Policy wurde redeployed | Re-evaluate Authorization |
+| Tool Result ist älter als Freshness Requirement | Re-invoke Tool |
+| Memory-Eintrag wurde korrigiert/überschrieben | Refresh Memory Retrieval |
+| Derived State (Summary/Cache) wurde invalidiert | Refresh Derivation |
+
+---
+
+## 10. RUN STATE vs WORKFLOW STATE
+
+### 10.1 Hypothese H6: Bestätigt für Long-Running Agents
+
+**H6: Run State und Workflow State sollten bei long-running/durable Agents getrennt modelliert werden.** ✅ **CONFIRMED for Profile B/C**
+
+### 10.2 Vergleich der Modelle
+
+| Modell | Beschreibung | Pro | Contra | Empfehlung |
+|---|---|---|---|---|
+| **A: Single Run State** | Alles in einem mutablen Objekt | Simpel, niedrige Latenz | Kein Recovery bei Crash; kein Replay; kein Long-Running | Profile A (bounded tasks) |
+| **B: Ephemeral Run + Durable Workflow** | Run State existiert nur während Execution; Workflow State persistiert über Runs | Recovery; Replay; Separation of Concerns | Mehr Complexity; zwei Stores | Profile B/C |
+| **C: Event-Sourced Workflow + Materialized Run View** | Workflow als Event Log; Run State als materialized view | Vollständiger Audit Trail; deterministisches Replay; Event History ist das durable Log hinter Durable Execution: ein vollständiges, geordnetes Record von allem, was in einer Workflow Execution passiert ist | Höchste Complexity; Event-Log-Wachstum | Profile C, Compliance-intensive Domains |
+
+### 10.3 Trennungskriterien
+
+| Eigenschaft | RUN_STATE | WORKFLOW_STATE |
+|---|---|---|
+| Lifecycle | Ephemer: lebt für einen Run | Durable: überlebt Runs |
+| Identität | run_id + step_id | workflow_id + node_id |
+| Persistenz | In-Memory oder kurzlebiger Store | Durable Store / Event Log |
+| Recovery | Restart = neuer Run | Resume from last committed state |
+| Versioning | Step-Sequenz innerhalb Run | Event-Sequenz des Workflows |
+| Wer schreibt | Runtime (direkt) | Workflow Engine (kontrolliert) |
+| Beispiele | Tool-Results, Intermediate Values, Current Step, Scratch | Node Status, Approval State, Retry Count, Wait State, Transition History |
+
+### 10.4 Falsifikation: Wann reicht ein Single State?
+
+Wenn **alle** folgenden Bedingungen erfüllt sind:
+- Task ist bounded (absehbare Completion)
+- Kein Human-in-the-Loop
+- Kein Multi-Day Execution
+- Keine Compliance-Requirement für Replay
+- Keine Recovery-Requirement bei Crash
+
+→ Single Run State ist ausreichend (Profile A).
+
+---
+
+## 11. EXTERNAL STATE MODEL
+
+### 11.1 Interaction Patterns
+
+| Pattern | Beschreibung | Wann sinnvoll | Risiko |
+|---|---|---|---|
+| **LIVE_READ** | Jede Abfrage geht direkt ans externe System | Authorization Checks, vor Writes, rapidly changing State | Latenz; API Limits |
+| **REFERENCE** | Nur resource_id + expected_revision speichern | Wenn Harness den Wert nicht braucht, nur die Identität | Revision kann inzwischen superseded sein |
+| **SNAPSHOT** | Vollständiger Wert zum Zeitpunkt t kopieren | Analyse, Planning, Reporting, Audit | TOCTOU bei Writes |
+| **CACHE** | Snapshot + TTL/Invalidation-Semantik | Häufig gelesene, selten geänderte Werte | Stale Reads |
+| **CDC-DRIVEN** | CDC Engine liest Transaction Log der Datenbank und emittiert jedes Insert, Update und Delete als Streaming Event | High-Freshness-Requirements mit vertretbarer Latenz | Complexity; nicht für alle externen Systeme verfügbar |
+
+### 11.2 Conditional Writes
+
+**[ENGINEERING_PRACTICE / SYSTEMS_ANALOGY]**
+
+Für externe Systeme, die es unterstützen:
+
+```
+Write Request:
+  resource_id: "customer/42"
+  operation: UPDATE
+  expected_revision: "rev-194"    ← ETag / If-Match
+  payload: { priority: "high" }
+```
+
+Viele APIs mitigieren Lost Updates und TOCTOU mittels Preconditions und Optimistic Concurrency Patterns (z.B. ETag-style Validators und Conditional Requests). Diese Mechanismen sind typischerweise auf eine Resource Representation begrenzt und werden zum Zeitpunkt der Mutation angewendet.
+
+### 11.3 Hypothese H11: Bestätigt
+
+**H11: Externer State sollte häufig referenziert statt vollständig repliziert werden.** ✅ **CONFIRMED**
+
+Begründung: Vollständige Replikation erzeugt Derived State mit Invalidation-Pflicht. Referenzierung (resource_id + observed_revision) vermeidet Drift, erfordert aber Live-Read-Capability.
+
+---
+
+## 12. MEMORY AUTHORITY MODEL
+
+### 12.1 Hypothese H3: Bestätigt mit Ausnahme
+
+**H3: Persistent Memory sollte, wenn eine aktuelle autoritative Quelle verfügbar ist, primär advisory behandelt werden.** ✅ **CONFIRMED**
+
+### 12.2 Wann ist Memory authoritative?
+
+| Bedingung | Memory Authority | Begründung |
+|---|---|---|
+| Kein externes System of Record existiert | **AUTHORITATIVE** | Memory ist einzige Quelle (z.B. User-Präferenzen, die nur durch Interaktion entstehen) |
+| Personal Assistants hängen am stärksten von Semantic Memory ab (User Preferences und Profiles) | **AUTHORITATIVE** für User-Preferences | Kein anderes System speichert diese |
+| Externe autoritative Quelle existiert und ist erreichbar | **ADVISORY** | Memory kann veraltet sein; Agent Memory darf Live Retrieval nicht outranken |
+| Externe Quelle existiert, ist aber nicht erreichbar | **FALLBACK** (mit Warnung) | Memory als degraded-mode Quelle; explizite Markierung als "unverified" |
+
+### 12.3 Memory Failure Modes
+
+| Failure | Beschreibung | Evidenz |
+|---|---|---|
+| **Summary Drift** | ~20% Faktenverlust bei naiver Summarization; Consolidation ohne Deduplication → catastrophic forgetting | EMPIRICAL_RESULT |
+| **Memory Poisoning** | Fehlerhafte oder manipulierte Episodic Entries propagieren in Semantic Memory | INFERENCE; kein direkter Agent-spezifischer Nachweis gefunden |
+| **Stale Personalization** | Agent Memory Staleness ist zunehmend als härteres, persistenteres Problem anerkannt als gewöhnlicher Memory Decay | EMPIRICAL_RESULT |
+| **Procedural Drift** | Outdated Skills/Instructions werden weiter angewendet | Procedural Memory Evaluation bleibt weniger standardisiert als fakt-zentrische Settings [PREPRINT_RESULT] |
+| **Cross-Type Contamination** | Kein Runtime-Enforcement: Procedural Skill, Semantic Fact und Episodic Trace sind oft dieselbe Art Objekt | PEER_REVIEWED_RESULT |
+
+### 12.4 Memory Freshness
+
+| Memory Type | Freshness Model | Invalidation |
+|---|---|---|
+| Episodic | Append-only; Einträge altern nicht, aber können korrigiert werden | Correction Event, Expiration Policy |
+| Semantic | Dependency-basiert: welche Episoden/Quellen liegen zugrunde? | Source-Episode-Invalidation; External Knowledge Change |
+| Procedural | Version-basiert: deployed skill version | New Deployment; Skill Deprecation |
+
+---
+
+## 13. DERIVED / CACHED STATE MODEL
+
+### 13.1 Hypothese H10: Bestätigt
+
+**H10: Derived State benötigt explizite Provenance zu seinen Source Revisions.** ✅ **CONFIRMED**
+
+### 13.2 Derived State Architecture
+
+```
+SOURCE STATE (version V_s)
+        │
+        ▼
+  DERIVATION PIPELINE (transform, embed, summarize, index)
+        │
+        ▼
+DERIVED STATE (derived_version, source_revision_vector: {source_1: V_s1, source_2: V_s2, ...})
+```
+
+### 13.3 Invalidation-Semantik
+
+| Trigger | Aktion |
+|---|---|
+| Source State hat neue Revision | Mark Derived State als POTENTIALLY_STALE |
+| Source Revision mismatch detected | Invalidate + schedule Recomputation |
+| Derived State wird gelesen + Source-Check scheitert | Return mit Stale-Warnung oder recompute |
+| Time-based Expiration (nur für Caches) | Evict |
+
+### 13.4 Darf Derived State authoritative sein?
+
+**NEIN**, wenn die Source verfügbar ist. Derived State ist *immer* eine Funktion seiner Sources und kann nie frischer sein als die Sources. **[INFERENCE + ENGINEERING_PRACTICE]**
+
+Ausnahme: Wenn die Source gelöscht/nicht mehr erreichbar ist und der Derived State die einzige verbliebene Repräsentation ist → degraded authority.
+
+---
+
+## 14. FRESHNESS / STALENESS MODEL
+
+### 14.1 Definitionen
+
+| Term | Definition |
+|---|---|
+| **FRESH** | Beobachteter Wert ist identisch mit aktuellem authoritativen Wert ODER innerhalb des für die Operation zugelassenen Staleness-Budgets |
+| **STALE** | Beobachteter Wert weicht bekanntermaßen vom aktuellen authoritativen Wert ab (z.B. neue Revision existiert) |
+| **UNKNOWN_FRESHNESS** | Kein Mechanismus verfügbar, um Frische zu bestimmen; Annahme "möglicherweise stale" |
+| **INVALIDATED** | Explizit als ungültig markiert (z.B. durch Source-Deletion, Policy-Revocation) |
+| **EXPIRED** | Zeitbasiertes Validity-Window überschritten |
+
+### 14.2 Hypothese H4: Bestätigt
+
+**H4: Freshness ist besser als Versions-/Dependency-Eigenschaft modellierbar als über universelle TTLs.** ✅ **CONFIRMED with nuance**
+
+| Freshness Model | Stärke | Schwäche | Geeignete State-Klassen |
+|---|---|---|---|
+| **TIME_BASED (TTL)** | Einfach zu implementieren; operativ transparent | Keine Korrelation zu tatsächlichen Änderungen; kann gleichzeitig zu strikt und zu lax sein | Low-risk Caches, Session State |
+| **VERSION_BASED** | Exakt: fresh ↔ observed_revision == current_revision | Erfordert Versions-API am Source | External State, Artifact State, Policy State |
+| **EVENT_BASED** | Reagiert auf tatsächliche Änderungen; kein Polling | CDC/Event-Infrastruktur nötig | External State mit CDC; Workflow State |
+| **DEPENDENCY_BASED** | Transitiv: Source-Änderung → Derived-Invalidation | Dependency-Graph muss gepflegt werden | Derived State, Semantic Memory |
+| **RISK_BASED** | Freshness-Requirement variiert nach Konsequenz der Operation | Erfordert Risiko-Klassifikation per Operation | Alle — als Meta-Modell über die anderen |
+| **HYBRID** | Kombiniert version + time + risk | Complexity | Profile B/C |
+
+### 14.3 PROPOSED FreshnessRequirement Contract v0.1
+
+**[PROPOSED_STANDARD]**
+
+```yaml
+FreshnessRequirement:
+  state_ref: "crm://customer/42"
+  source: "salesforce"
+  observed_revision: "rev-194"
+  observation_time: "2026-09-18T10:15:00Z"
+  freshness_model: VERSION_BASED | TIME_BASED | EVENT_BASED | DEPENDENCY_BASED
+  max_staleness:                         # nur bei TIME_BASED
+    value: null                          # KEINE universellen Defaults
+    unit: null
+  required_revision: null | "rev-194"    # VERSION_BASED: erwartet diese oder neuere
+  refresh_before_effect: true | false
+  allowed_staleness_mode: SNAPSHOT_OK | MUST_REFRESH | LIVE_ONLY
+  risk_class: LOW | MEDIUM | HIGH | CRITICAL
+```
+
+---
+
+## 15. SNAPSHOT vs LIVE READ DECISION MATRIX
+
+### 15.1 Entscheidungsmatrix
+
+| STATE_CATEGORY | OPERATION_TYPE | RISK_CLASS | SNAPSHOT_SAFE? | REFRESH_REQUIRED? | LIVE_READ_REQUIRED? | EXPECTED_REVISION? | RATIONALE | EVIDENCE_STATUS |
+|---|---|---|---|---|---|---|---|---|
+| External: CRM | Read-only Report | LOW | ✅ | ❌ | ❌ | ❌ | Analyse auf historischem Stand ist akzeptabel | ENGINEERING_PRACTICE |
+| External: CRM | Customer Update (Write) | MEDIUM | ❌ | ✅ | Preferred | ✅ | TOCTOU: Wert kann sich seit Snapshot geändert haben | PREPRINT_RESULT (TOCTOU-Bench) |
+| External: Git | Code Read for Analysis | LOW | ✅ (commit hash) | ❌ | ❌ | Content-Addressed: commit hash IS version | ENGINEERING_PRACTICE |
+| External: Git | Branch Push (Write) | MEDIUM | ❌ | ✅ | ✅ | ✅ (branch tip) | Branch kann sich bewegt haben | ENGINEERING_PRACTICE |
+| External: Inventory | Stock Check before Order | HIGH | ❌ | ✅ | ✅ | ✅ | Inventory ändert sich rapid | INFERENCE |
+| External: Payment | Balance/Transfer | CRITICAL | ❌ | ✅ | ✅ | ✅ | $40M Risiko durch Agent-Handlung auf stale Authorization State | PREPRINT_RESULT |
+| Policy | Permission Check | HIGH | ❌ | ✅ | ✅ | Policy epoch | Stale Permission → Security Breach | PREPRINT_RESULT |
+| Policy | Low-Risk Read Constraint | LOW | ✅ (innerhalb epoch) | ❌ | ❌ | ❌ | Read-only; Konsequenz gering | INFERENCE |
+| Episodic Memory | Recall past interaction | LOW | ✅ | ❌ | ❌ | ❌ | History ist append-only | INFERENCE |
+| Semantic Memory | Retrieve user preference | LOW-MED | ✅ | ❌ | ❌ | ❌ | Advisory; verify if critical | INFERENCE |
+| Derived State | Use cached embedding | LOW | ✅ (mit source_rev check) | ❌ | ❌ | Source revision | Derived safe wenn Source-Check passt | ENGINEERING_PRACTICE |
+| Run State | Read current step result | N/A | Immer current (in-process) | N/A | N/A | N/A | Runtime-eigener State | ENGINEERING_PRACTICE |
+| Production Deployment | Deploy change | CRITICAL | ❌ | ✅ | ✅ | ✅ | Irversible Side Effect | ENGINEERING_PRACTICE |
+
+### 15.2 Hypothese H5 + H14: Bestätigt
+
+**H5: Planning kann gegen Snapshot erfolgen; side-effectful Execution benötigt häufig aktuellen State Refresh.** ✅ **CONFIRMED**
+
+**H14: Snapshot + pre-effect live refresh ist häufig sinnvoller Hybrid, aber kein universelles Pflichtmuster.** ✅ **CONFIRMED**
+
+OpenPort adaptiert die gleiche Idee für Agent Tool Exposure: High-Risk Writes können delayed Operator Approval unterliegen; das optionale State Witness / Preconditions Profile bindet Write Intent an einen server-beobachteten Witness Hash und erfordert execute-time Revalidation.
+
+Pattern:
+```
+PLAN (Snapshot)  →  REFRESH (Live Read critical state)  →  EXECUTE (with expected_revision)
+```
+
+---
+
+## 16. CONSISTENCY MODEL
+
+### 16.1 Hypothese H8: Bestätigt
+
+**H8: Nicht jeder Read benötigt Strong Consistency.** ✅ **CONFIRMED**
+
+### 16.2 Consistency Requirements per State Class
+
+| State Class | Empfohlenes Modell | Begründung | Alternatives Modell | Cost |
+|---|---|---|---|---|
+| **Run State** (intra-run) | **Read-your-writes** | Agent muss eigene Schreibresultate sofort sehen | Strong wäre Overkill für single-writer | Low |
+| **Workflow State** | **Serializable** (innerhalb eines Workflows) | Transitions müssen geordnet und idempotent sein | Event Sourcing liefert dies implizit | Medium |
+| **External State** | **Depends on operation risk** | Read-only: Eventual ok; Writes: Optimistic Concurrency (CAS) | Wenn Latenz kritisch UND gelegentliche Inkonsistenzen akzeptabel: optimistische Patterns mit Reconciliation | Variable |
+| **Policy State** | **Strong (mindestens Read-your-writes)** | Wenn Operation Service/Tenant-Grenze überschreitet UND Authorization oder Billing betrifft: TOCTOU-Safeguards | Für Low-Risk: policy epoch check reicht | High for critical path |
+| **Episodic Memory** | **Eventual Consistency** | Append-only; selten lesesensitiv | Monotonic Reads sinnvoll | Low |
+| **Semantic Memory** | **Eventual Consistency** | Advisory; nicht für Real-Time-Decisions | N/A | Low |
+| **Procedural Memory** | **Strong (latest deployed version)** | Skill-Version muss deterministisch sein | N/A | Low (selten geschrieben) |
+| **Derived State** | **Eventual + Dependency-Check** | Invalidation bei Source-Divergenz | N/A | Low-Medium |
+| **Artifact State** | **Snapshot Isolation** (immutable versions) | Versionierte Artifacts sind per Definition konsistent | N/A | Low |
+
+### 16.3 Minimale Consistency-Semantik für einen Harness
+
+**[DESIGN_RECOMMENDATION]**
+
+1. **Read-your-writes** für Run State
+2. **Optimistic Concurrency (expected_revision)** für externe Writes
+3. **Eventual Consistency** für Memory und Derived State
+4. **Policy-Epoch-Check** vor privilegierten Operationen
+5. **Serializable Transitions** für Workflow State (bei durable Workflows)
+
+---
+
+## 17. CONCURRENCY / CONFLICT MODEL
+
+### 17.1 Konflikt-Taxonomie
+
+| Konflikt-Typ | Beschreibung | Betroffene State-Klassen | Mechanism |
+|---|---|---|---|
+| **LOST_UPDATE** | Agent überschreibt parallele Änderung | External State | expected_revision / CAS / conditional write |
+| **WRITE_SKEW** | Zwei Agents lesen denselben Snapshot, schreiben basierend darauf inkompatible Updates | External State, Shared Artifact | Serializable Isolation oder Merge Policy |
+| **TOCTOU** | Precondition war korrekt bei Check, nicht bei Use | External State, Policy State | Atomicity an der State-Mutation-Schicht: Transactions, Optimistic Locking oder Compare-and-Swap sicherstellen, dass Authorization Check und State Mutation nicht durch concurrent Write getrennt werden |
+| **STALE_READ_DECISION** | Agent entscheidet auf Basis eines veralteten Reads | Alle | Freshness Requirement + Refresh |
+| **RETRY_DUPLICATION** | Retry erzeugt doppelten Side Effect | External State | Idempotency Keys; Temporal stellt sicher, dass jede Activity effektiv einmal ausgeführt wird, auch bei Worker-Retries oder Crashes |
+
+### 17.2 Empfohlene Mechanismen per State Class
+
+| State Class | Primary Mechanism | Secondary |
+|---|---|---|
+| External State (Writes) | Conditional Write (ETag/If-Match/CAS) | Idempotency Key für Retries |
+| Workflow State | Event-Sourced append (sequence-based CAS) | Saga Compensation |
+| Artifact State | Content-Addressed Versioning (keine Overwrite-Konflikte) | N/A |
+| Shared Resources (Multi-Agent) | Lease/Lock (kurzlebig) oder Optimistic CAS | Concurrency Primitives werden in Agent-Architekturen tendenziell übersehen, wo der Fokus auf Model-Verhalten und Prompt Security liegt |
+
+### 17.3 Capability Contract Integration
+
+**[DESIGN_RECOMMENDATION]**
+
+Capability Contracts sollten ausdrücken können:
+
+```yaml
+capability:
+  name: update_customer_priority
+  state_reads:
+    - ref: customer_record
+      type: EXTERNAL_STATE
+      freshness: VERSION_BASED
+  state_writes:
+    - ref: customer_record
+      type: EXTERNAL_STATE
+      conflict_policy: CONDITIONAL_WRITE
+      requires_expected_revision: true
+  idempotency: REQUIRED
+```
+
+---
+
+## 18. STATE TRANSITION MODEL
+
+### 18.1 Explizite Transitions für kontrollierte State Classes
+
+**[DESIGN_RECOMMENDATION]**
+
+```
+S0 ──guard/precondition──▶ ACTION ──effect──▶ S1
+                                      │
+                                postcondition check
+                                      │
+                                 ┌────▼────┐
+                                 │ COMMIT  │ → transition_record
+                                 └─────────┘
+```
+
+### 18.2 Event Sourcing Suitability
+
+| State Class | Event Sourcing? | Begründung |
+|---|---|---|
+| Workflow State | ✅ EMPFOHLEN (Profile B/C) | Guarantee exactly-once Activity Completion und Saga-style Compensation durch deterministic Replay |
+| Run State | ❌ NICHT NÖTIG (Profil A), ✅ OPTIONAL (B/C) | Ephemer; Event Log ist Overhead für kurze Runs |
+| External State | ❌ (Externes System entscheidet) | Harness kontrolliert externe Events nicht |
+| Episodic Memory | ✅ NATÜRLICH (append-only) | Memory *ist* ein Event Log |
+| Artifact State | ✅ (Content-Addressed Versioning) | Jede Version ist implizit ein Event |
+| Semantic/Derived State | ❌ | Update-in-place mit Provenance ist einfacher |
+
+### 18.3 Hypothese H17: Bestätigt
+
+**H17: Event Sourcing ist für manche Workflow-State-Probleme nützlich, aber kein genereller Agent-State-Default.** ✅ **CONFIRMED**
+
+---
+
+## 19. STATE PROVENANCE MODEL
+
+### 19.1 Minimal Viable Provenance Record
+
+**[DESIGN_RECOMMENDATION]**
+
+Für jeden State Read/Write:
+
+```yaml
+provenance_record:
+  trace_id: "otel-trace-xxx"     # OpenTelemetry compatible
+  span_id: "span-yyy"
+  run_id: "run-123"
+  workflow_id: "wf-456"          # if applicable
+  capability: "update_customer_priority"
+  tool: "salesforce_api"
+  operation: READ | WRITE | PROPOSED_WRITE
+  resource_ref: "crm://customer/42"
+  resource_revision: "rev-194"
+  observed_at: "2026-09-18T10:15:00Z"
+  result_status: SUCCESS | CONFLICT | STALE | FAILED
+  decision_context: "Used for priority escalation decision"
+  validation_outcome: VALID | INVALID | SKIPPED
+```
+
+Ziel: Beantwortung der Frage "Auf welchen State hat der Agent diese Entscheidung gestützt?"
+
+### 19.2 Temporal Semantik
+
+| Zeitdimension | Definition | Relevanz |
+|---|---|---|
+| **Event Time** | Wann das Ereignis in der realen Welt stattfand | Audit, Causality |
+| **Observation Time** | Wann der Harness den Wert gelesen hat | Freshness-Berechnung |
+| **Processing Time** | Wann der Harness den Wert verarbeitet hat | Performance, Debugging |
+| **Valid Time** | Zeitraum, in dem der Wert gültig ist/war | Policy-Decisions, temporal Queries |
+| **Transaction Time** | Wann der Wert im Store committed wurde | Consistency, Replay |
+
+Ein Agent kann unterscheiden zwischen "dies war wahr um 10:00" (Event/Valid Time) und "dies wurde um 10:00 gelesen" (Observation Time) **nur wenn** diese Zeiten explizit getrennt aufgezeichnet werden. **[DESIGN_RECOMMENDATION]**
+
+---
+
+## 20. STATE ISOLATION MODEL
+
+### 20.1 Isolation Dimensions
+
+| Dimension | Isolation Mechanism | Failure wenn verletzt |
+|---|---|---|
+| **Tenant** | Separate State Stores oder Row-Level Security + Tenant-ID Enforcement | Cross-Tenant Data Leakage |
+| **User** | User-scoped Memory; Access Control per State-Object | Privacy Violation |
+| **Run** | Run-scoped State (run_id als Partition Key) | Cross-Run Contamination |
+| **Agent** (Multi-Agent) | Agent-scoped Working Memory; Shared State nur über explizite Coordination Channels | Unintended Shared Caches, Memory Bleed |
+| **Workflow** | Workflow-scoped State; Jede Workflow Execution hat exklusiven Zugang zu ihrem lokalen State | Cross-Workflow Interference |
+
+### 20.2 Shared Resources
+
+Shared Resources (z.B. gemeinsame Knowledge Base, Shared Artifact Repository) erfordern:
+- Explizites Read/Write Access Control
+- Concurrency Control (siehe Sektion 17)
+- Audit Trail für Zugriffe
+
+### 20.3 Isolation-Verletzungen verhindern
+
+| Risiko | Prävention |
+|---|---|
+| Cross-Run Contamination | Run-scoped Context Assembly; keine automatische Übernahme von Tool-Results aus vorherigen Runs |
+| Memory Bleed | Memory-Retrieval ist Run-/User-scoped; Semantic Memory wird nur nach expliziter Policy geteilt |
+| Unintended Cache Sharing | Cache Keys inkludieren tenant_id + user_id; Eviction bei Tenant/User-Switch |
+
+---
+
+## 21. STATE LIFECYCLE MODEL
+
+### 21.1 State Lifecycle States
+
+```
+CREATED → ACTIVE → [STALE] → [SUPERSEDED] → [INVALIDATED] → ARCHIVED → [DELETED]
+```
+
+| Lifecycle State | Semantik | Applicable To |
+|---|---|---|
+| **CREATED** | State-Objekt existiert, ist aber noch nicht committed | Run State, Artifact Draft |
+| **ACTIVE** | Aktueller, gültiger, verwendbarer State | Alle |
+| **STALE** | Bekannt veraltet, aber noch nicht invalidiert | Cached External State, Derived State |
+| **SUPERSEDED** | Neue Version existiert; diese Version ist historisch | Artifact Versions, Policy Versions |
+| **INVALIDATED** | Explizit als ungültig markiert | Policy (revoked), Memory (corrected) |
+| **ARCHIVED** | Nicht mehr aktiv, aber für Audit/Compliance aufbewahrt | Run State (nach Completion), Workflow State |
+| **DELETED** | Gelöscht (ggf. nach Retention Period) | Alle (nach Policy) |
+
+### 21.2 Lifecycle vs. State Class
+
+| State Class | Typical Lifecycle Depth | Retention |
+|---|---|---|
+| Run State | CREATED → ACTIVE → ARCHIVED | Short (days to weeks; domain-dependent) |
+| Workflow State | CREATED → ACTIVE → ARCHIVED | Long (compliance-dependent) |
+| Artifact State | CREATED → ACTIVE → SUPERSEDED → ARCHIVED | Long (version history) |
+| External State | Managed by external system | External |
+| Memory | CREATED → ACTIVE → [STALE] → ARCHIVED | Domain-dependent |
+| Derived State | CREATED → ACTIVE → STALE → INVALIDATED → DELETED | Short (recomputable) |
+
+---
+
+## 22. STATE CHANGE → RUNTIME RESPONSE MATRIX
+
+### 22.1 Response Taxonomy
+
+| Response | Semantik | Trigger-Beispiel |
+|---|---|---|
+| **REFRESH** | Aktuellen Wert neu lesen; weiterarbeiten | TTL expired, Source hat neue Revision |
+| **REVALIDATE** | Preconditions prüfen, ob Plan noch gültig | Policy Change, External State Mutation |
+| **REBIND** | State-Binding in IR/Manifest neu auflösen | Resource-ID hat sich geändert; Capability wurde aktualisiert |
+| **REPLAN** | Neuen Plan erstellen, weil Annahmen ungültig | Fundamentale Vorbedingung verletzt; Ziel unerreichbar mit aktuellem Plan |
+| **RECOMPILE** | IR/Manifest komplett neu erzeugen | Capability Contract geändert; Schema-Migration; Procedural Memory Update |
+
+### 22.2 Matrix: State Change → Response
+
+| State Class Changed | Change Magnitude | Betroffene Dependency | Response |
+|---|---|---|---|
+| External State: Value Updated | Minor (gleiche Struktur) | Parameter eines Steps | **REFRESH** |
+| External State: Value Updated | Major (ungültige Precondition) | Guard-Condition eines Steps | **REVALIDATE** → ggf. **REPLAN** |
+| External State: Resource Deleted | Elimination | Ziel-Resource | **REPLAN** |
+| Policy State: New Policy Version | Minor (gleiche Permissions) | Authorization Check | **REFRESH** |
+| Policy State: Permission Revoked | Breaking | Authorization für aktuelle Capability | **REVALIDATE** → **REPLAN** (andere Capability) oder **ABORT** |
+| Procedural Memory: Skill Updated | Non-Breaking | Tool Instructions | **REBIND** |
+| Procedural Memory: Skill Deprecated | Breaking | Capability Binding | **RECOMPILE** |
+| Artifact State: New Version by External | Concurrent | Output des Plans | **REVALIDATE** (Merge oder Override?) |
+| Semantic Memory: Corrected | Advisory | Planning Assumption | **REFRESH** (wenn im aktiven Context) |
+| Derived State: Source Diverged | Dependency | Cached Value | **REFRESH** (recompute Derived State) |
+| Workflow State: Approval Received | Expected Transition | Wait State | Normaler Workflow-Fortschritt |
+
+### 22.3 Hypothese H15: Bestätigt
+
+**H15: State Changes sollten Revalidation/Recompile nur dann auslösen, wenn relevante Dependencies betroffen sind.** ✅ **CONFIRMED**
+
+Dependency-Tracking ist Voraussetzung: Ohne explizite state_reads/state_writes in Capability Contracts kann der Harness nicht bestimmen, *welche* Changes relevant sind.
+
+---
+
+## 23. CAPABILITY CONTRACT ↔ STATE CONTRACT BOUNDARY
+
+### 23.1 Trennungsprinzip
+
+**[DESIGN_RECOMMENDATION]**
+
+| Semantik | Gehört in Capability Contract | Gehört in State Contract |
+|---|---|---|
+| "Welche State-Typen brauche ich?" | ✅ `requires: [customer_record]` | ❌ |
+| "Welche Felder lese/schreibe ich?" | ✅ `reads: [customer.status]`, `writes: [customer.priority]` | ❌ |
+| "Welches Consistency-Level brauche ich?" | ✅ `consistency: CONDITIONAL_WRITE` | ❌ (wird in State Contract *implementiert*) |
+| "Wo kommt der State her?" | ❌ | ✅ `source: salesforce` |
+| "Welche Revision hat der State?" | ❌ | ✅ `revision: rev-194` |
+| "Wann wurde er beobachtet?" | ❌ | ✅ `observed_at: ...` |
+| "Wie wird Freshness bestimmt?" | ❌ | ✅ `freshness_model: VERSION_BASED` |
+| "Welche Write-Policy gilt?" | ❌ | ✅ `write_policy: CONDITIONAL` |
+| "Wie wird Konflikt behandelt?" | Declares *requirement* | Implements *policy* |
+
+### 23.2 Keine Doppelpflege
+
+Prinzip: Capability Contract deklariert *was* benötigt wird. State Contract beschreibt *wie* es bereitgestellt wird. Binding geschieht zur Compile-Zeit (IR-Erzeugung) oder Runtime.
+
+---
+
+## 24. STATE CONTRACT ↔ IR / MANIFEST BOUNDARY
+
+### 24.1 Was gehört in die IR / Execution Manifest?
+
+| Information | IR-Phase | Compile-Time Known? | Runtime-Bound? | Runtime-Refreshed? |
+|---|---|---|---|---|
+| `state_ref` (resource type + pattern) | ✅ | ✅ | ❌ | ❌ |
+| `state_ref` (concrete resource_id) | ✅ wenn bekannt | Manchmal | ✅ (oft erst Runtime) | ❌ |
+| `expected_revision` | ❌ | ❌ | ✅ | ✅ (refresh before effect) |
+| `freshness_requirement` | ✅ | ✅ (from Capability Contract) | ❌ | ❌ |
+| `read/write set` (declared) | ✅ | ✅ | ❌ | ❌ |
+| `snapshot_id` | ❌ | ❌ | ✅ | ❌ |
+| `runtime_refresh_required` | ✅ (als Flag) | ✅ | ❌ | ❌ |
+| `conflict_policy` | ✅ | ✅ | ❌ | ❌ |
+| `binding` (resolved State Contract) | Partial | Partial | ✅ | ✅ |
+
+---
+
+## 25. PROPOSED StateContract v0.1
+
+**[PROPOSED_STANDARD]**
+
+```yaml
+StateContract:
+  # Identity
+  state_id: "sc-customer-42-run123"
+  state_type: EXTERNAL_STATE           # Enum aus Ontology
+  resource_ref: "crm://customer/42"
+
+  # Source
+  source: "salesforce"
+  source_of_truth: "salesforce"        # Explizit, nicht implizit
+  owner: "sales_team"                  # Organizational owner
+  authority_class: AUTHORITATIVE       # AUTHORITATIVE | ADVISORY | DERIVED
+
+  # Access
+  read_policy: { principals: [harness_runtime, agent], scope: run }
+  write_policy: { principals: [harness_runtime], mode: CONDITIONAL_WRITE, requires_approval: false }
+
+  # Schema & Version
+  schema_ref: "salesforce://Customer/v3"
+  revision: "rev-194"
+  digest: "sha256:abc123..."
+  observed_at: "2026-09-18T10:15:00Z"
+  valid_from: null                     # Optional: temporal validity
+  valid_until: null
+
+  # Freshness
+  freshness_requirement:
+    model: VERSION_BASED
+    refresh_before_effect: true
+    allowed_staleness_mode: SNAPSHOT_OK_FOR_PLANNING
+    risk_class: MEDIUM
+
+  # Consistency
+  consistency_requirement: OPTIMISTIC_CONCURRENCY
+
+  # Dependencies
+  dependency_refs: []                  # Other StateContracts this depends on
+
+  # Conflict
+  conflict_policy: FAIL_AND_REFRESH    # FAIL_AND_REFRESH | LAST_WRITE_WINS | MERGE | MANUAL
+
+  # Provenance
+  provenance:
+    trace_id: "otel-xxx"
+    capability: "update_customer_priority"
+    tool: "salesforce_api"
+
+  # Lifecycle
+  retention: "30d"
+  sensitivity: PII                     # Data classification
+
+  # Invalidation
+  invalidation_rules:
+    - trigger: SOURCE_REVISION_CHANGED
+      action: MARK_STALE
+    - trigger: POLICY_EPOCH_CHANGED
+      action: REVALIDATE_ACCESS
+```
+
+---
+
+## 26. PROPOSED StateReference / StateBinding Schema
+
+**[PROPOSED_STANDARD]**
+
+```yaml
+StateReference:
+  ref_id: "sref-001"
+  resource_type: "customer_record"
+  resource_pattern: "crm://customer/{id}"  # Compile-time
+  resource_id: null                         # Runtime-bound
+  state_type: EXTERNAL_STATE
+  source: "salesforce"
+
+StateBinding:
+  ref_id: "sref-001"
+  resource_id: "crm://customer/42"          # Resolved at runtime
+  resolved_at: "2026-09-18T10:14:55Z"
+  revision: "rev-194"
+  snapshot_id: "snap-789"                   # If snapshot taken
+  binding_phase: COMPILE_TIME | RUNTIME_BIND | RUNTIME_REFRESH
+  freshness_status: FRESH | STALE | UNKNOWN
+```
+
+---
+
+## 27. PROPOSED FreshnessRequirement Schema
+
+(Siehe Sektion 14.3 — hier als eigenständiges Schema)
+
+**[PROPOSED_STANDARD]**
+
+```yaml
+FreshnessRequirement:
+  state_ref: string                    # Resource Reference
+  source: string                       # Authority System
+  observed_revision: string | null     # Last known revision
+  observation_time: ISO8601            # When observed
+  freshness_model: VERSION_BASED | TIME_BASED | EVENT_BASED | DEPENDENCY_BASED
+  max_staleness: Duration | null       # Only for TIME_BASED
+  required_revision: string | null     # VERSION_BASED: minimum acceptable
+  refresh_before_effect: boolean       # Must re-read before write?
+  allowed_staleness_mode: SNAPSHOT_OK | MUST_REFRESH | LIVE_ONLY
+  risk_class: LOW | MEDIUM | HIGH | CRITICAL
+  fallback_on_unreachable: USE_CACHED | ABORT | DEGRADE_WITH_WARNING
+```
+
+---
+
+## 28. PROPOSED StateRead / StateWrite Declaration
+
+**[PROPOSED_STANDARD]**
+
+```yaml
+StateRead:
+  ref: StateReference
+  purpose: PLANNING | PRECONDITION_CHECK | DISPLAY | ANALYSIS
+  freshness_requirement: FreshnessRequirement
+  consistency: EVENTUAL | READ_YOUR_WRITES | STRONG
+  result_binding: "$customer_status"   # Variable binding in IR
+
+StateWrite:
+  ref: StateReference
+  operation: CREATE | UPDATE | DELETE | APPEND
+  expected_revision: string | null     # CAS
+  idempotency_key: string | null
+  conflict_policy: FAIL_AND_REFRESH | LAST_WRITE_WINS | MERGE
+  requires_approval: boolean
+  compensation_action: string | null   # Saga: how to undo
+  validation: PRE_WRITE | POST_WRITE | BOTH
+```
+
+---
+
+## 29. PROFILE A — Low-Risk Read-Only State Architecture
+
+### Minimal State Model
+
+| Element | Included | Notes |
+|---|---|---|
+| Working Context | ✅ | Conversation + Retrieved Knowledge |
+| Run State | ✅ (minimal: step counter, tool results) | In-memory; no persistence needed |
+| Workflow State | ❌ | Nicht benötigt für bounded single-shot tasks |
+| Artifact State | ❌ oder minimal (output only) | |
+| External State | READ-ONLY via Tools | No writes; snapshots sufficient |
+| Policy State | Minimal: capability-level permission check | |
+| Episodic Memory | ❌ oder Session-scoped | |
+| Semantic Memory | ❌ oder Read-only Knowledge Base | |
+| Procedural Memory | System Prompt + Tool Definitions | |
+| Derived State | ❌ | |
+
+**Source of Truth**: External Systems (read-only). **Snapshot Policy**: All reads are snapshots; acceptable for analysis/reporting. **Live Read**: Not required. **Freshness**: TIME_BASED (TTL) is sufficient. **Consistency**: Eventual. **Conflict Policy**: N/A (no writes). **Trace**: Minimal (input/output logging).
+
+---
+
+## 30. PROFILE B — Stateful Multi-Step State Architecture
+
+### State Model
+
+| Element | Included | Notes |
+|---|---|---|
+| Working Context | ✅ with freshness metadata | |
+| Run State | ✅ (persisted: step results, intermediate values) | Checkpointed for recovery |
+| Workflow State | ✅ (durable: node status, retry count, approvals) | Separated from Run State |
+| Artifact State | ✅ (versioned outputs) | |
+| External State | ✅ (read + conditional writes) | expected_revision for writes |
+| Policy State | ✅ (checked before writes) | Policy epoch validation |
+| Episodic Memory | ✅ (cross-session) | Advisory |
+| Semantic Memory | ✅ | Advisory |
+| Procedural Memory | ✅ (versioned skill registry) | |
+| Derived State | ✅ (caches with provenance) | |
+
+**Source of Truth**: External Systems for business data; Harness for run/workflow/artifact. **Snapshot Policy**: Snapshots for planning; refresh before writes. **Live Read**: Before side-effectful operations. **Freshness**: VERSION_BASED + RISK_BASED. **Consistency**: Read-your-writes (run); Optimistic Concurrency (external writes). **Conflict Policy**: CONDITIONAL_WRITE (CAS). **Trace**: Full provenance.
+
+---
+
+## 31. PROFILE C — High-Risk / Side-Effectful State Architecture
+
+### State Model
+
+Alles aus Profile B, plus:
+
+| Element | Additional Requirements |
+|---|---|
+| Working Context | Provenance-annotated; freshness-checked per fragment |
+| Run State | Event-sourced or durably checkpointed |
+| Workflow State | Event-sourced; deterministic replay; saga compensation |
+| External State | Mandatory live read before every write; expected_revision always required |
+| Policy State | Live policy check before every privileged operation; no caching |
+| All Writes | Idempotency keys required; compensation actions defined |
+| Audit | Complete provenance trail: every read, every write, every decision-basis |
+
+**Source of Truth**: Strictly external for business data; re-verified at execution time. **Freshness**: VERSION_BASED + mandatory refresh_before_effect. **Consistency**: Strong/Serializable for critical paths. **Conflict Policy**: FAIL_AND_REFRESH (never LAST_WRITE_WINS). **Trace**: Compliance-grade full audit.
+
+---
+
+## 32. FIVE NEGATIVE EXAMPLES
+
+### NE1: STALE_CONTEXT — Veraltetes Tool-Result
+
+**Szenario**: Agent plant basierend auf einem Jira-Issue-Status "In Progress". Zwischen Planning und Execution wird das Issue extern auf "Closed" gesetzt. Agent erstellt dennoch einen Comment für ein bereits geschlossenes Issue.
+
+**Root Cause**: Tool-Result im Context wurde als current truth behandelt. Kein Refresh vor Effect.
+
+**Prevention**: `refresh_before_effect: true` + `expected_revision` im Write.
+
+**Evidence**: Agent liest State von externer Quelle, speichert Ergebnis im Context, handelt später darauf. Agent re-validiert nie; vertraut dem gecachten Ergebnis.
+
+### NE2: STALE_AUTHORIZATION_STATE — Policy hat sich geändert
+
+**Szenario**: Agent erhält zu t₁ Authorization für Deployment. Zwischen t₁ und Execution t₂ wird die Policy redeployed und entzieht die Permission. Agent deployed dennoch.
+
+**Root Cause**: Certified at time t₁ based on admitted evidence state. Certificate may not be presented for execution until later time t₂. Während des Intervalls kann sich die Ziel-Infrastruktur ändern.
+
+**Prevention**: Live Policy Check vor Execution; Policy-Epoch-Binding.
+
+### NE3: LOST_UPDATE — Parallele Änderung überschrieben
+
+**Szenario**: Agent liest Customer Priority "low", plant Update auf "high". Parallel setzt ein Mitarbeiter Priority auf "critical". Agent schreibt "high" und überschreibt "critical".
+
+**Root Cause**: Kein expected_revision / conditional write.
+
+**Prevention**: `expected_revision: "rev-194"` im Write-Request; bei Mismatch: FAIL_AND_REFRESH.
+
+### NE4: MEMORY_AS_TRUTH — Memory widerspricht System of Record
+
+**Szenario**: Semantic Memory enthält "Customer X hat Gold-Status" (konsolidiert aus 6 Monate alten Episoden). Tatsächlich wurde der Status im CRM auf "Silver" downgraded. Agent gewährt Gold-Rabatt basierend auf Memory.
+
+**Root Cause**: Agent Memory outrankt Live Retrieval; eine frühere Tool-Observation kann älter sein als das autoritative System of Record.
+
+**Prevention**: Memory ist advisory; vor geschäftskritischen Entscheidungen: Live-Read gegen CRM.
+
+### NE5: DERIVED_STATE_DRIFT — Cache basiert auf superseded Source
+
+**Szenario**: Embedding-Index für Product Descriptions wurde vor 3 Tagen erstellt. Seitdem wurden 200 Product Descriptions aktualisiert. RAG-Retrieval liefert veraltete Produktinformation.
+
+**Root Cause**: Vector Indexes sind leicht zu befüllen und schwer zu invalidieren; Cache-Layer verlängern die Halbwertszeit jedes Dokuments.
+
+**Prevention**: Source-Revision-Tracking im Derived State; Dependency-basierte Invalidation; CDC-Pipeline.
+
+---
+
+## 33. PRACTICAL IMPLEMENTATION PATTERNS
+
+| Pattern | Löst welches Problem | State Class | Mechanism |
+|---|---|---|---|
+| **ETag / If-Match** | Lost Update Prevention | External State | ETag-style Validators und Conditional Requests; HTTP standard |
+| **Optimistic Concurrency (CAS)** | Concurrent Write Safety | External State, Workflow State | Compare-and-swap auf Revision/Version |
+| **Event Sourcing** | Auditability, Replay, Recovery | Workflow State | Event History als durables Log: vollständiges, geordnetes Record |
+| **Idempotency Keys** | Retry Duplication Prevention | External State (Writes) | Request-unique Key; Server deduplicates |
+| **Content-Addressed Storage** | Immutable Versioning | Artifact State | Git commit hashes, content hashes |
+| **CDC (Change Data Capture)** | Real-time External State Freshness | External State → Derived State | CDC Engine liest Transaction Log, emittiert Streaming Events |
+| **MVCC** | Snapshot Isolation | Database-backed State | Multi-version reads without blocking writers |
+| **Durable Execution (Temporal-pattern)** | Workflow Durability + Recovery | Workflow State | Automatic state capture at every step; resume exactly where left off |
+| **Policy Epoch Check** | Stale Authorization Detection | Policy State | policy_version im Request; reject if epoch mismatch |
+| **OpenTelemetry Spans** | Provenance, Audit | All State Operations | OpenTelemetry wurde das Default Wire Format; vendor-neutral Observability als table stakes |
+
+---
+
+## 34. ANTI-PATTERNS
+
+| Anti-Pattern | Beschreibung | Failure Mode | Remedy |
+|---|---|---|---|
+| **Context-as-State** | Behandlung des LLM-Context-Windows als einzigen State-Store | State verloren bei Context Truncation; kein Recovery | Separate State Stores + Context als Projektion |
+| **Memory-as-Truth** | Memory outrankt autoritative Quellen | Veraltete Entscheidungen | Memory = advisory; Live-Read bei Business-Critical |
+| **Universal TTL** | Ein TTL für alle State-Typen | Zu strikt für stabile States, zu lax für volatile | Risk-basierte Freshness per State Class |
+| **Fire-and-Forget Writes** | Writes ohne expected_revision oder Idempotency | Lost Updates, Duplicates | Conditional Writes + Idempotency Keys |
+| **Snapshot-Forever** | Snapshot einmal lesen, nie refreshen | Decisions auf veralteter Basis | Refresh vor Side Effects |
+| **Live-Read-Everything** | Jeder Read als Live Read | Read Path dominiert Latenzbudget; 60% der Latenz in Coding Tasks durch Tool Execution allein | Risk-basierte Read-Strategie |
+| **Monolithic State Object** | Alle States in einem mutablen Objekt | Keine Isolation, keine separate Lifecycle/Freshness | State-Class-Separation |
+| **Shared Mutable Context** | Context aus einem Run beeinflusst anderen Run | Cross-Run Contamination | Run-scoped State Isolation |
+| **Implicit Trust in Derived State** | Cached/summarized Values als authoritative behandeln | Derived State Drift | Provenance + Source-Revision-Check |
+
+---
+
+## 35. TEST / EVAL PLAN
+
+### 35.1 Kontrollierte Experimente
+
+| Experiment | Independent Variable | Dependent Variable | Messung |
+|---|---|---|---|
+| **A: Context-only vs. Explicit State Store** | State Management approach | Task correctness, stale-read rate | Inject state changes during execution; measure decision accuracy |
+| **B: Snapshot-only vs. Live-Read vs. Hybrid** | Read strategy | Correctness, latency, tool calls | Vary external state volatility; measure accuracy-latency tradeoff |
+| **C: No Revision Check vs. CAS** | Write strategy | Lost-update rate, conflict detection | Simulate concurrent external changes; measure data integrity |
+| **D: Memory Authoritative vs. Memory Advisory + Source Verification** | Memory trust level | Decision accuracy vs. latency | Create memory-source-of-record divergences; measure error rate |
+| **E: Single State Object vs. Run+Workflow+External Separation** | State architecture | Recovery success, audit completeness, complexity | Inject failures at various points; measure recovery and debuggability |
+
+### 35.2 Ablation Studies
+
+1. Remove freshness metadata from context → measure stale-read failure rate increase
+2. Remove expected_revision from writes → measure lost-update rate
+3. Remove policy-epoch check → measure unauthorized-write rate
+4. Remove provenance logging → measure audit completeness degradation
+5. Merge Run and Workflow State → measure recovery success degradation for long-running tasks
+
+### 35.3 Metriken
+
+| Metrik | Definition | Target (Profile A / B / C) |
+|---|---|---|
+| Stale-Read Failure Rate | % Entscheidungen auf veraltetem State | <5% / <1% / <0.1% |
+| Lost-Update Rate | % Writes die parallele Changes überschreiben | N/A / <1% / <0.01% |
+| TOCTOU Gap Rate | % Trajectories mit exploitablem Gap | N/A / <5% / <1% |
+| Recovery Success Rate | % erfolgreiche Recoveries nach Failure | N/A / >95% / >99.9% |
+| Audit Completeness | % State-Ops mit vollständiger Provenance | >50% / >95% / >99.9% |
+
+---
+
+## 36. OPEN RESEARCH QUESTIONS
+
+| ID | Frage | Status | Priority |
+|---|---|---|---|
+| OQ1 | Welche konkreten Freshness-SLAs sind für welche Domains angemessen? | INSUFFICIENT_EVIDENCE | HIGH |
+| OQ2 | Wie erkennt ein LLM zuverlässig, dass Information in seinem Context veraltet ist? | OPEN — STALE-Benchmark evaluiert dies; 50 temporally ordered Sessions mit ~152K Tokens | HIGH |
+| OQ3 | Kann ein Agent lernen, wann Live-Read vs. Snapshot angemessen ist? | OPEN_QUESTION | MEDIUM |
+| OQ4 | Wie skaliert Dependency-basierte Freshness bei großen State-Graphen? | OPEN_QUESTION | MEDIUM |
+| OQ5 | Welche Memory-Consolidation-Strategien minimieren Faktenverlust unter Kapazitätsgrenzen? | Consolidation Pathways als eines der aktivsten offenen Forschungsgebiete in Agent Memory (arXiv:2512.13564) | HIGH |
+| OQ6 | Wie können State Contracts maschinenlesbar und LLM-interpretierbar gleichzeitig sein? | OPEN_QUESTION | HIGH |
+| OQ7 | Kann Tool-Fusing (atomic check-and-act) als Standard-Pattern für Agent-Tool-Interfaces etabliert werden? | Tool-Fusing erreicht ~100% Schutz, erfordert aber Tool-Server-Redesign, das kein Framework aktuell liefert | HIGH |
+| OQ8 | Gibt es empirisch validierte State-Architektur-Vergleiche für Agent-Systeme? | INSUFFICIENT_EVIDENCE — keine peer-reviewed Studie gefunden | CRITICAL |
+| OQ9 | Wie wird Cross-Agent Coordination State bei Multi-Agent Systems modelliert? | Multi-Agent Systems fügen Coordination Layer hinzu, den kein Single-Agent Memory Design gut handhabt | MEDIUM |
+| OQ10 | Ist ein StateContract als formale Spezifikation ökonomisch sinnvoll oder reichen deklarative Resource APIs? | OPEN_QUESTION | HIGH |
+
+---
+
+## 37. FINAL ARTIFACT: Enterprise Agent State Ownership Architecture v0.1
+
+### Architecture Summary
+
+```
+                    ┌──────────────────────────────────────────────┐
+                    │           WORKING CONTEXT (Projection)        │
+                    │  ┌─────────┬──────────┬──────────┬─────────┐ │
+                    │  │ Fresh   │ Advisory │ Stale    │ Unknown │ │
+                    │  │ Metadata│ Metadata │ Metadata │ Fresh.  │ │
+                    │  └────┬────┴────┬─────┴────┬─────┴────┬────┘ │
+                    └───────┼─────────┼──────────┼──────────┼──────┘
+                            │ PROJECT │          │          │
+              ┌─────────────┼─────────┼──────────┼──────────┼──────────────┐
+              │             ▼         ▼          ▼          ▼              │
+              │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐   │
+              │  │ Run  │ │Wkflw │ │Artif.│ │ Ext. │ │Policy│ │Memory│   │
+              │  │State │ │State │ │State │ │State │ │State │ │Store │   │
+              │  └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘   │
+              │     │        │        │        │        │        │        │
+              │  ephemer  durable  versioned  external  external  long-    │
+              │  runtime  event    content    systems   IAM/Gov   term     │
+              │  store    log/SM   store      (SoT)    (SoT)     store    │
+              │                                                           │
+              │  ┌──────────────┐  ┌────────────────────┐                 │
+              │  │ Derived State│  │ Procedural Memory  │                 │
+              │  │ (Cache/Index)│  │ (Skill Registry)   │                 │
+              │  └──────┬───────┘  └────────┬───────────┘                 │
+              │         │                   │                             │
+              │  dependency-based    version-based                        │
+              │  invalidation        deployment                           │
+              └───────────────────────────────────────────────────────────┘
+
+              KEY PRINCIPLES:
+              1. Context ≠ State
+              2. Authority ≠ Ownership ≠ Storage
+              3. Memory ≠ Current Truth
+              4. Snapshot ≠ Live State
+              5. Freshness ≠ Simple Age
+              6. Read ≠ Validated Read
+              7. Write ≠ Committed State Change
+              8. Current Value ≠ Observed Value
+```
+
+### Minimum Viable State Model per Profile
+
+| | Profile A | Profile B | Profile C |
+|---|---|---|---|
+| State Classes | Context + Run (minimal) + External (read-only) | All 10 classes | All 10 + Coordination |
+| Source of Truth | External (read-only) | External + Harness-internal | External (re-verified) + Harness |
+| Snapshot Policy | All snapshots | Snapshots for planning | Snapshots only for analysis |
+| Live Read | Not required | Before writes | Before all consequential ops |
+| Freshness | TTL | Version + Risk | Version + Mandatory Refresh |
+| Consistency | Eventual | Read-your-writes + OCC | Strong for critical paths |
+| Conflict Policy | N/A | CAS | CAS + Saga Compensation |
+| Trace | Input/Output logging | Full provenance | Compliance-grade audit |
+
+---
+
+## 38. KNOWLEDGE-BASE EXPORT
+
+| ID | CLAIM | CLAIM_TYPE | STATE_CLASS | SOURCE | EVIDENCE | COUNTEREVIDENCE | CONFIDENCE | ARCHITECTURE_IMPLICATION | IMPLEMENTATION_IMPLICATION | FALSIFIER | REVISION_TRIGGER |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| KB-001 | Working Context ist eine Projektion auf State, nicht State selbst | INFERENCE + EMPIRICAL_RESULT | WORKING_CONTEXT | FutureAGI 2026; multiple practitioner reports | Stale context ist häufigster RAG-Incident | Für triviale Chat-Agents ist Context effektiv der einzige State | HIGH | Separate State Stores erforderlich; Context-Assembly als Runtime-Funktion | Context-Assembly-Pipeline mit Freshness-Metadata | Agent-System ohne externe State-Quellen, bei dem Context-as-State keine Failures erzeugt | Neuer empirischer Vergleich Context-only vs. State-Store |
+| KB-002 | Agent sollte nicht Source of Truth für externen Business State sein | INFERENCE + PREPRINT_RESULT | EXTERNAL_STATE | TOCTOU-Bench, TOCTOU practitioner reports | 12% exploitable TOCTOU gaps; $40M risk incident | Agent *ist* Source of Truth für selbst erzeugte Artifacts | HIGH | External State immer über externe APIs; Agent als Reader/Proposer | Conditional Writes; expected_revision; Idempotency Keys | Domain, in der Agent-State nachweislich zuverlässiger ist als externes System | Peer-reviewed Studie zu Agent-Authority-Models |
+| KB-003 | Persistent Memory ist default-advisory wenn autoritative Quelle existiert | INFERENCE + EMPIRICAL_RESULT | EPISODIC_MEMORY, SEMANTIC_MEMORY | ~20% Faktenverlust bei Consolidation; FutureAGI stale-context data | User-Preferences, die nur in Memory existieren, sind authoritative | MEDIUM-HIGH | Live-Read-Verification vor business-critical Memory-basierten Entscheidungen | Memory-Retrieval mit authority_class Annotation | Domäne, in der Memory-basierte Entscheidungen konsistent besser sind als Live-Read | Empirischer Vergleich Memory-authoritative vs. Memory-advisory |
+| KB-004 | Run State und Workflow State sollten bei long-running Agents getrennt werden | ENGINEERING_PRACTICE + INFERENCE | RUN_STATE, WORKFLOW_STATE | Temporal/Cadence Architektur; Durable Execution Patterns | Für bounded single-step Tasks ist Trennung Overhead | MEDIUM-HIGH | Zwei separate Stores/Lifecycles; Workflow als durable Event Log | Run-scoped ephemeral store + Workflow engine (Temporal-artig) | Long-running Agent, bei dem Single-State nachweislich gleiche Recovery-Rate liefert | Empirischer Recovery-Vergleich |
+| KB-005 | Freshness ist besser versions-/dependency-basiert als TTL-basiert | INFERENCE + ENGINEERING_PRACTICE | ALL | Distributed Systems Literatur; CDC-Pattern | Time-based TTLs sind operativ einfacher für Low-Risk | MEDIUM | FreshnessRequirement Contract mit model-Feld | Version-Tracking auf State-References; Dependency-Graph für Derived State | Domain mit beweisbar stabiler Änderungsrate, wo TTL nachweislich ausreicht | Empirischer Vergleich TTL vs. Version-based Freshness |
+| KB-006 | TOCTOU ist strukturelles Problem von Multi-Step Agent Execution | PREPRINT_RESULT | EXTERNAL_STATE, POLICY_STATE | TOCTOU-Bench: 12% baseline exploitable | Tool-Fusing eliminiert Problem nahezu vollständig (kein Agent-Architektur-Problem, sondern Tool-Design-Problem) | HIGH | Mandatory refresh_before_effect für High-Risk; State Witness binding | Conditional APIs; Atomic check-and-act Tools; Pre-execution Revalidation | Framework, das Tool-Fusing als Default implementiert und TOCTOU auf <1% senkt | Replizierung von TOCTOU-Bench mit neuen Mitigation-Strategien |
+| KB-007 | Memory-Typen in LLM-Agents haben keine architektonische Typenisolation | PEER_REVIEWED_RESULT | ALL MEMORY | CoALA + Always-On Agents Survey | Spezialisierte Memory-Systeme (Letta, Mem0) implementieren zunehmend Typ-Enforcement | HIGH | Governance-Layer über Memory-Stores; Typ-Enforcement; Write-Restrictions per Memory-Type | Memory-Store-Schema mit type_tag + write_policy + scope_gate | Memory-System mit nachweislich sicherer impliziter Typenisolation | Neues Memory-System mit formaler Typ-Enforcement-Evaluation |
+| KB-008 | Snapshot + Pre-Effect Live Refresh ist sinnvoller Hybrid | PREPRINT_RESULT + ENGINEERING_PRACTICE | EXTERNAL_STATE | OpenPort Protocol; Durable Execution Patterns | Für idempotente/additive Ops ist Pre-Effect Refresh unnötig | MEDIUM-HIGH | Zwei-Phasen Read-Strategie: Snapshot für Planning, Live Read vor Effect | FreshnessRequirement.refresh_before_effect flag | Task-Domain, in der Snapshot-only nachweislich gleichwertig ist | Controlled experiment: Hybrid vs. Snapshot-only vs. Live-only |
+| KB-009 | Derived State benötigt explizite Provenance zu Source Revisions | INFERENCE + ENGINEERING_PRACTICE | DERIVED_STATE | Cache-Invalidation-Literatur; Materialized-View-Semantik | Für kurzlebige Caches mit TTL reicht Provenance-loses Expire | MEDIUM-HIGH | source_revision_vector in jedem Derived-State-Objekt | Dependency-Tracking-Pipeline; Invalidation on Source-Mutation | Derived State, der nachweislich nie aus der Sync gerät ohne Provenance | Source-Volatility-Studie |
+| KB-010 | Nicht jeder Read benötigt Strong Consistency | SYSTEMS_ANALOGY + INFERENCE | ALL | Distributed Systems: Consistency Spectrum (Eventual → Strong) | Für bestimmte Financial/Authorization Reads ist Strong Consistency mandatory | HIGH | Risk-basierte Consistency-Wahl per State Class und Operation | Konsistenz-Requirement als Teil von StateRead Declaration | Read-intensive Agent, bei dem Strong Consistency nachweislich keine besseren Outcomes liefert als Eventual | Controlled experiment: Eventual vs. Strong per State Class |
+
+---
+
+## ENTERPRISE DESIGN QUESTIONS — FINAL ANSWERS
+
+| # | Frage | Antwort |
+|---|---|---|
+| 1 | Was ist State im Harness? | Ein identifizierbarer, versionierter Wert einer Ressource, der Autorität, Ownership, Freshness und Lifecycle besitzt — **nicht** der LLM-Context selbst |
+| 2 | Welche State-Kategorien braucht jeder Harness? | MINIMAL: Working Context (als Projektion) + Run State + mindestens eine External State Referenz |
+| 3 | Welche sind optional? | Workflow State (nur ab Profile B), Coordination State (nur Multi-Agent), Event-Sourcing (nur Profile C) |
+| 4 | Wer ist pro State-Klasse Source of Truth? | Siehe Authority Matrix (Sektion 6) — External Systems für Business-Daten; Harness für Run/Workflow/Artifact |
+| 5 | Darf das LLM jemals authoritative Writes erzeugen? | **Direkt: NEIN** für External Business State. Über Harness-validierte Proposals: JA. Für eigene Artifacts/Episodic Memory: JA (append). Für Procedural Memory: NEIN (Designer-kontrolliert) |
+| 6 | Wann darf Context als ausreichend aktuell gelten? | Wenn observed_revision == current_revision (VERSION_BASED) ODER innerhalb des für die Operation definierten Staleness-Budgets (RISK_BASED) |
+| 7 | Wie wird Freshness maschinenlesbar? | FreshnessRequirement Schema (Sektion 27): observed_revision + observation_time + freshness_model + allowed_staleness_mode |
+| 8 | Wann ist Snapshot sicher? | Für Planning, Analyse, Read-only Reports, Audit, und wenn observed_revision noch aktuell ist |
+| 9 | Wann ist Live Read erforderlich? | Vor side-effectful Writes (Profile B/C); Authorization Checks; Rapidly Changing Resources; wenn Risk Class ≥ HIGH |
+| 10 | Wann braucht ein Write expected_revision? | Bei jedem Write an External State, der das Risiko eines Lost Update trägt (Profile B/C: immer; Profile A: N/A) |
+| 11 | Was ist die minimale Consistency-Semantik? | Read-your-writes für Run State; Eventual für Memory; OCC für External Writes |
+| 12 | Wie wird Memory von State unterschieden? | Memory = persistent past observations/abstractions (ADVISORY default). State = aktueller autoritativer Wert einer Ressource (AUTHORITATIVE) |
+| 13 | Wann ist Memory authoritative? | Nur wenn keine externe autoritative Quelle für denselben Datentyp existiert oder erreichbar ist |
+| 14 | Wie werden Derived/Cached States invalidiert? | Dependency-basiert: source_revision_vector; Invalidation bei Source-Mutation; TTL nur als Fallback |
+| 15 | Wie reagiert Runtime auf State-Änderungen? | REFRESH → REVALIDATE → REBIND → REPLAN → RECOMPILE — abhängig von Change-Magnitude und Dependency-Betroffenheit (Sektion 22) |
+| 16 | Welche State-Semantik in CapabilityContract? | WAS: state_reads, state_writes, freshness_requirement, consistency_requirement |
+| 17 | Welche in StateContract? | WIE: source, revision, observed_at, freshness_model, write_policy, conflict_policy, provenance |
+| 18 | Welche in IR/Manifest? | BINDING: state_ref, expected_revision (runtime), snapshot_id, refresh_before_effect flag |
+| 19 | Welche State-Metadaten müssen geloggt werden? | Provenance Record (Sektion 19.1): source, reader/writer, timestamp, revision, capability, tool, validation outcome |
+| 20 | Kleinstes sicheres Modell per Profile? | A: Context + minimal Run State + read-only External. B: All 10 classes mit OCC. C: All 10 + Event-Sourcing + mandatory Live-Read + Saga Compensation |
+
+---
+
+**Document Status**: v0.1 — PROPOSED_STANDARD
+**Confidence Level**: Architecture principles are well-grounded in distributed systems engineering and emerging agent research. Specific schemas (StateContract, FreshnessRequirement) are design hypotheses without external validation.
+**Primary Falsifier**: Controlled empirical comparison of state architectures in real enterprise agent deployments (OQ8 — currently INSUFFICIENT_EVIDENCE).
+**Next Steps**: Validate schemas against real Harness implementation; design ablation studies per Sektion 35; track TOCTOU-Bench replications and tool-fusing adoption.

@@ -1,0 +1,1082 @@
+{
+  "meta": {
+    "skill_name": "deep-reasoning-analysis-enterprise",
+    "skill_version": "installed-current",
+    "run_id": "HDBA-2026-09-18-001",
+    "timestamp_or_date_basis": "2026-09-18 Europe/Berlin; web research current through 2026-09-18",
+    "model_or_agent_context": "GPT-5.6 Sol; web research plus user-provided research specification",
+    "artifact_set_id": "HDBA-v0.1-research-pack"
+  },
+  "intake_scope": {
+    "user_goal": "Determine from current evidence how reusable LLM/AI-agent harnesses can be standardized across domains, including skill architecture, routing/composition, state, tools, security, evaluation and a proposed Harness Design Base Architecture.",
+    "task_type": "deep_research_ai_system_architecture",
+    "in_scope": [
+      "2024-2026 primary/peer-reviewed agent research plus foundational work",
+      "skills and skill composition",
+      "tool routing and tool interfaces",
+      "state and memory",
+      "security/trust boundaries",
+      "evaluation/reproducibility",
+      "current Agent Skills/MCP/OpenAI engineering specifications",
+      "evidence-backed HDBA v0.1 proposal"
+    ],
+    "out_of_scope": [
+      "claiming a universal architecture is scientifically proven",
+      "vendor adoption as proof of superiority",
+      "implementation of a production harness",
+      "formal security certification"
+    ],
+    "missing_inputs": [
+      "Exact deduplicated number of all search results screened is not exposed reproducibly by the web search interface; retained-source count is exact, screened-source count is NOT_REPORTED.",
+      "Full-text extraction for every preprint was not performed; claims use primary abstracts/specifications or accessible paper text and are scoped accordingly."
+    ],
+    "code_analysis_detected": false
+  },
+  "source_map": [
+    {
+      "source_id": "S001",
+      "source_type": "primary_preprint",
+      "title": "SkillsBench: Benchmarking How Well Agent Skills Work Across Diverse Tasks",
+      "location": "https://arxiv.org/abs/2602.12670",
+      "claim_supported": "Curated skills can improve task success, but gains vary strongly by domain and task; self-generated skills do not help on average.",
+      "evidence_quote_or_pointer": "86 tasks, 11 domains, 7 agent-model configurations, 7,308 trajectories; curated skills +16.2 pp average; 16/84 tasks negative.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S002",
+      "source_type": "primary_preprint",
+      "title": "Demystifying Agent Skills: Why They Work-Until They Do Not",
+      "location": "https://arxiv.org/abs/2608.14036",
+      "claim_supported": "Skills often act as procedural anchors; large skill pools create a retrieval bottleneck.",
+      "evidence_quote_or_pointer": "8,135 trials; retrieval actual-use precision fell from 29.6% to 3.3% as pool size grew 5 to 100.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S003",
+      "source_type": "primary_preprint",
+      "title": "SWE-Skills-Bench: Do Agent Skills Actually Help in Real-World Software Engineering?",
+      "location": "https://arxiv.org/abs/2603.15401",
+      "claim_supported": "Skill injection is not universally useful and can add large token overhead or hurt when guidance is stale or mismatched.",
+      "evidence_quote_or_pointer": "~565 instances, 49 public skills; 39/49 zero pass-rate improvement; +1.2 pp average; up to +451% token overhead; 3 skills degraded up to -10%.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S004",
+      "source_type": "primary_preprint",
+      "title": "Generative Skill Composition for LLM Agents",
+      "location": "https://arxiv.org/abs/2606.32025",
+      "claim_supported": "Multi-skill composition can be modeled jointly over subset, count, and order; structured composition can outperform simple top-k retrieval.",
+      "evidence_quote_or_pointer": "SkillsBench evaluation on two coding agents; +23.1 pp and +18.2 pp over no-skill; lower prompt cost than gold retrieval in reported setup.",
+      "confidence": 3,
+      "verification_status": "verified_web_2026-09-18_preprint"
+    },
+    {
+      "source_id": "S005",
+      "source_type": "primary_preprint",
+      "title": "Compositional Skill Routing for LLM Agents: Decompose, Retrieve, and Compose",
+      "location": "https://arxiv.org/abs/2606.18051",
+      "claim_supported": "Task decomposition quality is a major bottleneck for large multi-skill libraries; dependency-aware composition can reduce context use.",
+      "evidence_quote_or_pointer": "300 compositional queries, 2,209 MCP skills; standard decomposition step-level category recall 34.2%; iterative skill-aware decomposition improves reported decomposition accuracy.",
+      "confidence": 3,
+      "verification_status": "verified_web_2026-09-18_preprint"
+    },
+    {
+      "source_id": "S006",
+      "source_type": "official_specification",
+      "title": "Agent Skills Specification",
+      "location": "https://agentskills.io/specification",
+      "claim_supported": "Current Agent Skills format standardizes SKILL.md metadata and supports progressive disclosure plus optional scripts, references, and assets.",
+      "evidence_quote_or_pointer": "Required name and description; optional compatibility/metadata/allowed-tools; instructions and resources loaded progressively.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S007",
+      "source_type": "official_specification",
+      "title": "Model Context Protocol 2026-07-28 Architecture",
+      "location": "https://modelcontextprotocol.io/specification/2026-07-28/architecture",
+      "claim_supported": "MCP separates host orchestration/security from focused servers and uses explicit capability negotiation.",
+      "evidence_quote_or_pointer": "Client-host-server architecture; host controls permissions and lifecycle; servers expose focused resources/tools/prompts.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S008",
+      "source_type": "official_specification",
+      "title": "Model Context Protocol 2026-07-28 Tools and Authorization",
+      "location": "https://modelcontextprotocol.io/specification/2026-07-28/server/tools",
+      "claim_supported": "Tool interfaces are schema-described and security guidance recommends user control for tool invocations; protocol state is explicit rather than implicit.",
+      "evidence_quote_or_pointer": "Tools have input schemas; human-in-the-loop guidance; stateful operations use explicit handles across calls.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S009",
+      "source_type": "official_vendor_documentation",
+      "title": "OpenAI Agents SDK",
+      "location": "https://developers.openai.com/api/docs/guides/agents/sdk",
+      "claim_supported": "Current engineering practice exposes distinct runtime, tool, state, orchestration, guardrail, human-review, tracing and evaluation primitives.",
+      "evidence_quote_or_pointer": "Official SDK documentation lists run loop/state, tools/MCP, orchestration/handoffs, guardrails/human review, tracing/evaluation as separable capabilities.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18_engineering_evidence_only"
+    },
+    {
+      "source_id": "S010",
+      "source_type": "peer_reviewed",
+      "title": "ToolHop: A Query-Driven Benchmark for Evaluating Large Language Models in Multi-Hop Tool Use",
+      "location": "https://aclanthology.org/2025.acl-long.150/",
+      "claim_supported": "Multi-hop tool use with interdependencies remains difficult even for strong models.",
+      "evidence_quote_or_pointer": "ACL 2025; 995 queries, 3,912 tools, 14 LLMs; leading reported accuracy 49.04%.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S011",
+      "source_type": "peer_reviewed",
+      "title": "ToolSandbox: A Stateful, Conversational, Interactive Evaluation Benchmark for LLM Tool Use Capabilities",
+      "location": "https://aclanthology.org/2025.findings-naacl.65/",
+      "claim_supported": "State dependencies, missing information, and dynamic tool interactions expose failures not visible in stateless one-shot benchmarks.",
+      "evidence_quote_or_pointer": "NAACL Findings 2025; stateful tool execution, on-policy simulator and dynamic milestone evaluation.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S012",
+      "source_type": "peer_reviewed",
+      "title": "HiAgent: Hierarchical Working Memory Management for Solving Long-Horizon Agent Tasks with Large Language Model",
+      "location": "https://aclanthology.org/2025.acl-long.1575/",
+      "claim_supported": "Long-horizon tasks can benefit from explicit hierarchical working-memory management.",
+      "evidence_quote_or_pointer": "ACL 2025; five long-horizon tasks; reported roughly 2x success rate and 3.8 fewer average steps.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S013",
+      "source_type": "peer_reviewed",
+      "title": "Memory OS of AI Agent",
+      "location": "https://aclanthology.org/2025.emnlp-main.1318/",
+      "claim_supported": "Hierarchical long-term memory can improve long-conversation retention in a memory-intensive benchmark.",
+      "evidence_quote_or_pointer": "EMNLP 2025; LoCoMo, GPT-4o-mini; reported +48.36% F1 and +46.18% BLEU-1 over baselines.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S014",
+      "source_type": "primary_preprint",
+      "title": "Agent Workflow Memory",
+      "location": "https://arxiv.org/abs/2409.07429",
+      "claim_supported": "Reusable induced workflows can improve long-horizon web navigation and transfer across tasks/domains.",
+      "evidence_quote_or_pointer": "Mind2Web and WebArena, 1000+ tasks across 200+ domains; reported relative gains and cross-domain transfer.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S015",
+      "source_type": "peer_reviewed",
+      "title": "StateFlow: Enhancing LLM Task-Solving through State-Driven Workflows",
+      "location": "https://arxiv.org/abs/2403.11322",
+      "claim_supported": "Explicit state-machine process grounding can improve success and reduce inference cost on some multi-step tool tasks.",
+      "evidence_quote_or_pointer": "COLM 2024 paper; reported +13% InterCode SQL and +28% ALFWorld versus ReAct, with lower cost.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S016",
+      "source_type": "primary_preprint",
+      "title": "Agentless: Demystifying LLM-based Software Engineering Agents",
+      "location": "https://arxiv.org/abs/2407.01489",
+      "claim_supported": "Added autonomous-agent complexity is not always necessary for strong task performance.",
+      "evidence_quote_or_pointer": "Simple localization-repair-validation pipeline reported 32% SWE-bench Lite at low cost, outperforming then-current open-source agents.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S017",
+      "source_type": "primary_research",
+      "title": "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering",
+      "location": "https://arxiv.org/abs/2405.15793",
+      "claim_supported": "Interface design between model and environment materially affects agent behavior and success.",
+      "evidence_quote_or_pointer": "Custom ACI evaluated on SWE-bench and HumanEvalFix; authors report substantial gains without changing model weights.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S018",
+      "source_type": "primary_preprint",
+      "title": "tau-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains",
+      "location": "https://arxiv.org/abs/2406.12045",
+      "claim_supported": "Agent reliability must be measured over repeated runs and rule-following, not only single-run task success.",
+      "evidence_quote_or_pointer": "Function-calling agents under 50% task success in study; pass^8 under 25% in retail for GPT-4o.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S019",
+      "source_type": "primary_research",
+      "title": "AgentRewardBench: Evaluating Automatic Evaluations of Web Agent Trajectories",
+      "location": "https://arxiv.org/abs/2504.08942",
+      "claim_supported": "Neither a single LLM judge nor rule-based evaluation is sufficient across all web-agent settings.",
+      "evidence_quote_or_pointer": "1,302 expert-reviewed trajectories, 5 benchmarks, 12 judges; no single judge best across benchmarks; rule evaluation can underreport success.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S020",
+      "source_type": "primary_preprint",
+      "title": "The BrowserGym Ecosystem for Web Agent Research",
+      "location": "https://arxiv.org/abs/2412.05467",
+      "claim_supported": "Standardized observation/action spaces and experiment management improve comparability and reproducibility of web-agent evaluation.",
+      "evidence_quote_or_pointer": "Unified environment evaluated six models across multiple browser benchmarks.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S021",
+      "source_type": "primary_preprint",
+      "title": "Agent Security Bench: Formalizing and Benchmarking Attacks and Defenses in LLM-based Agents",
+      "location": "https://arxiv.org/abs/2410.02644",
+      "claim_supported": "Agent security failures occur across prompts, tools and memory, and current defenses are incomplete.",
+      "evidence_quote_or_pointer": "10 scenarios, 400+ tools, 13 LLMs, nearly 90k cases; highest average reported ASR 84.30%.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S022",
+      "source_type": "primary_preprint",
+      "title": "LivePI: More Realistic Benchmarking of Agents Against Indirect Prompt Injection",
+      "location": "https://arxiv.org/abs/2605.17986",
+      "claim_supported": "Indirect prompt injection remains effective in production-like tool-using agents; pre-execution authorization can sharply reduce tested harmful actions.",
+      "evidence_quote_or_pointer": "Seven surfaces, twelve attack families, five malicious goals; reported total ASR 10.7%-29.6%; two-layer defense intercepted tested malicious completions in one GPT-5.3-Codex setting.",
+      "confidence": 3,
+      "verification_status": "verified_web_2026-09-18_preprint"
+    },
+    {
+      "source_id": "S023",
+      "source_type": "primary_preprint",
+      "title": "NetInjectBench: Benchmarking Indirect Prompt Injection in Tool-Using Large Language Model Agents for Network Operations",
+      "location": "https://arxiv.org/abs/2607.10490",
+      "claim_supported": "Execution-time authorization boundaries can outperform prompt-only safety in a bounded benchmark.",
+      "evidence_quote_or_pointer": "130 scenarios; naive unsafe tool action 82.5%; metadata-aware policy gate 0/240 unsafe under stated metadata-integrity assumption.",
+      "confidence": 3,
+      "verification_status": "verified_web_2026-09-18_preprint"
+    },
+    {
+      "source_id": "S024",
+      "source_type": "primary_preprint",
+      "title": "Why Do Multi-Agent LLM Systems Fail?",
+      "location": "https://arxiv.org/abs/2503.13657",
+      "claim_supported": "Multi-agent architectures introduce distinct specification, coordination, verification and termination failure modes; more agents do not guarantee gains.",
+      "evidence_quote_or_pointer": "Five/seven framework variants across 150+ tasks/traces; 14 failure modes grouped into system design, inter-agent misalignment and verification/termination.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S025",
+      "source_type": "peer_reviewed",
+      "title": "ReAct: Synergizing Reasoning and Acting in Language Models",
+      "location": "https://arxiv.org/abs/2210.03629",
+      "claim_supported": "Interleaving reasoning with environment actions is a foundational agent-loop pattern with task-specific empirical benefits.",
+      "evidence_quote_or_pointer": "ICLR 2023; evaluated knowledge and interactive decision tasks.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S026",
+      "source_type": "peer_reviewed",
+      "title": "Re-Invoke: Tool Invocation Rewriting for Zero-Shot Tool Retrieval",
+      "location": "https://aclanthology.org/2024.findings-emnlp.270/",
+      "claim_supported": "Tool retrieval quality is a scaling bottleneck and can be improved with retrieval-specific methods.",
+      "evidence_quote_or_pointer": "EMNLP Findings 2024; +20% relative nDCG@5 single-tool and +39% multi-tool on ToolE versus reported alternatives.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S027",
+      "source_type": "primary_preprint",
+      "title": "LongFuncEval: Measuring the effectiveness of long context models for function calling",
+      "location": "https://arxiv.org/abs/2505.10570",
+      "claim_supported": "Large tool catalogs, long tool responses and long conversations can substantially degrade function-calling performance.",
+      "evidence_quote_or_pointer": "Reported degradation ranges: 7%-85% with more tools; 7%-91% with longer tool responses; 13%-40% with longer multi-turn conversation.",
+      "confidence": 4,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S028",
+      "source_type": "primary_preprint",
+      "title": "Agent Skills in the Wild: An Empirical Study of Security Vulnerabilities at Scale",
+      "location": "https://arxiv.org/abs/2601.10338",
+      "claim_supported": "Skills are a supply-chain and privilege surface; executable scripts increase observed vulnerability risk.",
+      "evidence_quote_or_pointer": "42,447 skills collected, 31,132 analyzed; 26.1% with at least one vulnerability; script-bundling OR=2.12.",
+      "confidence": 3,
+      "verification_status": "verified_web_2026-09-18_preprint"
+    },
+    {
+      "source_id": "S029",
+      "source_type": "peer_reviewed",
+      "title": "Do Not Mention This to the User: Detecting and Understanding Malicious Agent Skills in the Wild",
+      "location": "https://www.usenix.org/conference/usenixsecurity26/presentation/liu-yi",
+      "claim_supported": "Malicious skill ecosystems are an observed supply-chain threat requiring provenance, review and constrained permissions.",
+      "evidence_quote_or_pointer": "USENIX Security 2026; 157 reported malicious skills removed after disclosure; paper analyzes multi-phase malicious behavior.",
+      "confidence": 5,
+      "verification_status": "verified_web_2026-09-18"
+    },
+    {
+      "source_id": "S030",
+      "source_type": "primary_empirical",
+      "title": "Agent Skills: A Data-Driven Analysis of Claude Skills for Extending Large Language Model Functionality",
+      "location": "https://arxiv.org/abs/2602.08004",
+      "claim_supported": "Public skill ecosystems are large, redundant, software-heavy and include non-trivial state-changing/system-level capabilities.",
+      "evidence_quote_or_pointer": "40,285 publicly listed skills from a major marketplace; heavy-tailed lengths and widespread intent redundancy.",
+      "confidence": 3,
+      "verification_status": "verified_web_2026-09-18_preprint"
+    },
+    {
+      "source_id": "S031",
+      "source_type": "standard",
+      "title": "RFC 8259 - The JavaScript Object Notation (JSON) Data Interchange Format",
+      "location": "https://www.rfc-editor.org/rfc/rfc8259",
+      "claim_supported": "Defines the JSON syntax baseline used by analysis_report.json.",
+      "evidence_quote_or_pointer": "RFC 8259.",
+      "confidence": 5,
+      "verification_status": "standard_reference"
+    },
+    {
+      "source_id": "S032",
+      "source_type": "standard",
+      "title": "CommonMark Specification 0.31.2",
+      "location": "https://spec.commonmark.org/0.31.2/",
+      "claim_supported": "Defines the Markdown parsing baseline used by analysis_report.md.",
+      "evidence_quote_or_pointer": "CommonMark 0.31.2.",
+      "confidence": 5,
+      "verification_status": "standard_reference"
+    },
+    {
+      "source_id": "S033",
+      "source_type": "standard",
+      "title": "JSON Schema Draft 2020-12",
+      "location": "https://json-schema.org/draft/2020-12",
+      "claim_supported": "Provides the schema-validation orientation for analysis_report.json.",
+      "evidence_quote_or_pointer": "JSON Schema Draft 2020-12.",
+      "confidence": 5,
+      "verification_status": "standard_reference"
+    }
+  ],
+  "standards_alignment": [
+    {
+      "standard_id": "COMMONMARK-0.31.2",
+      "name": "CommonMark",
+      "version": "0.31.2",
+      "applies_to": [
+        "analysis_report.md",
+        "Evidence-Based_Harness_Design_Base_Architecture_v0.1.md"
+      ],
+      "alignment_status": "required",
+      "claim_level": "standard_aligned",
+      "source_id": "S032",
+      "limitations": [
+        "No formal certification claimed."
+      ]
+    },
+    {
+      "standard_id": "RFC-8259",
+      "name": "JSON Data Interchange Format",
+      "version": "2017",
+      "applies_to": [
+        "analysis_report.json",
+        "evidence_ledger.jsonl"
+      ],
+      "alignment_status": "required",
+      "claim_level": "format_compatible",
+      "source_id": "S031",
+      "limitations": [
+        "RFC 8259 defines syntax, not research validity."
+      ]
+    },
+    {
+      "standard_id": "JSON-SCHEMA-2020-12",
+      "name": "JSON Schema",
+      "version": "2020-12",
+      "applies_to": [
+        "analysis_report.json"
+      ],
+      "alignment_status": "required",
+      "claim_level": "schema_validated",
+      "source_id": "S033",
+      "limitations": [
+        "Validation is against the installed skill schema, not an external certification."
+      ]
+    },
+    {
+      "standard_id": "AGENT-SKILLS",
+      "name": "Agent Skills Specification",
+      "version": "current as of 2026-09-18",
+      "applies_to": [
+        "proposed skill package compatibility"
+      ],
+      "alignment_status": "reference",
+      "claim_level": "standard_aligned",
+      "source_id": "S006",
+      "limitations": [
+        "The richer skill.contract.yaml proposed here is an extension, not part of the Agent Skills specification."
+      ]
+    },
+    {
+      "standard_id": "MCP-2026-07-28",
+      "name": "Model Context Protocol",
+      "version": "2026-07-28 final",
+      "applies_to": [
+        "tool and capability adapter guidance"
+      ],
+      "alignment_status": "reference",
+      "claim_level": "standard_aligned",
+      "source_id": "S007",
+      "limitations": [
+        "MCP demonstrates an interoperability mechanism; it does not prove architectural superiority."
+      ]
+    }
+  ],
+  "risk_gate": {
+    "risk_level": "low",
+    "risk_reasons": [
+      "Technical architecture research; no real-world side effects are executed."
+    ],
+    "allowed_actions": [
+      "web research",
+      "source comparison",
+      "artifact generation",
+      "local deterministic validation"
+    ],
+    "blocked_actions": [
+      "overstating preprints as peer-reviewed consensus",
+      "claiming certification",
+      "inventing missing study fields"
+    ]
+  },
+  "method_selection": {
+    "selected_methods": [
+      "PS+ decomposition",
+      "ToT competing architecture families",
+      "CoVe claim verification",
+      "MP bias/failure-mode review",
+      "ablation-oriented synthesis"
+    ],
+    "selection_reason_public": "The task asks for competing hypotheses, counterevidence, source hierarchy, architecture synthesis, falsifiability and machine-readable artifacts; multiple evidence paths and explicit boundary conditions are therefore required."
+  },
+  "evidence_plan": {
+    "claims_to_verify": [
+      "No canonical academic definition of agent harness exists; use an operational definition that includes runtime/control around model interaction.",
+      "Agent-computer/tool interface design materially affects task success.",
+      "Skills can improve task performance but have heterogeneous and sometimes negative marginal utility.",
+      "Large tool/skill catalogs create retrieval and context bottlenecks.",
+      "Complex multi-skill tasks require more than independent relevance ranking; order/decomposition/dependencies matter.",
+      "State-machine workflows can outperform free-form loops on some structured long-horizon tasks.",
+      "More autonomy or more agents is not inherently better.",
+      "Working-memory management helps long-horizon tasks; long-term memory is task dependent.",
+      "Reliability requires repeated-run and trajectory/end-state evaluation, not only single-output grading.",
+      "Execution-time trust boundaries are necessary for side-effectful agents; prompt-only defenses are insufficient.",
+      "Skill provenance, permissions and security scanning are justified by observed skill supply-chain risks.",
+      "Progressive disclosure is a current skill engineering standard and is indirectly supported by long-context degradation evidence.",
+      "The exact proposed manifest schema is not scientifically validated.",
+      "Deterministic validators add high value where objective success criteria exist, but can miss semantically valid outcomes.",
+      "Protocols and typed contracts improve interoperability as engineering mechanisms, but do not guarantee cross-model behavioral equivalence.",
+      "Reproducibility for stochastic agents should be distributional and environment/version pinned rather than interpreted as identical text/trajectory."
+    ],
+    "required_sources": [
+      "peer-reviewed/primary benchmark papers",
+      "2026 primary preprints for emerging Agent Skills evidence",
+      "official Agent Skills and MCP specifications",
+      "current official OpenAI engineering documentation",
+      "security benchmarks and supply-chain studies"
+    ],
+    "tool_needs": [
+      "web search across independent query families",
+      "local JSON/schema/order/source validation",
+      "artifact integrity hashing"
+    ]
+  },
+  "evidence_ledger": [
+    {
+      "evidence_id": "E001",
+      "claim_id": "C001",
+      "source_ids": [
+        "S007",
+        "S009",
+        "S020"
+      ],
+      "evidence_class": "engineering synthesis",
+      "quote_or_pointer": "No canonical academic definition of agent harness exists; use an operational definition that includes runtime/control around model interaction.",
+      "confidence": 4,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E002",
+      "claim_id": "C002",
+      "source_ids": [
+        "S010",
+        "S011",
+        "S017"
+      ],
+      "evidence_class": "direct empirical",
+      "quote_or_pointer": "Agent-computer/tool interface design materially affects task success.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E003",
+      "claim_id": "C003",
+      "source_ids": [
+        "S001",
+        "S003"
+      ],
+      "evidence_class": "direct empirical",
+      "quote_or_pointer": "Skills can improve task performance but have heterogeneous and sometimes negative marginal utility.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E004",
+      "claim_id": "C004",
+      "source_ids": [
+        "S002",
+        "S026",
+        "S027"
+      ],
+      "evidence_class": "direct empirical",
+      "quote_or_pointer": "Large tool/skill catalogs create retrieval and context bottlenecks.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E005",
+      "claim_id": "C005",
+      "source_ids": [
+        "S004",
+        "S005",
+        "S010"
+      ],
+      "evidence_class": "emerging empirical",
+      "quote_or_pointer": "Complex multi-skill tasks require more than independent relevance ranking; order/decomposition/dependencies matter.",
+      "confidence": 4,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E006",
+      "claim_id": "C006",
+      "source_ids": [
+        "S015"
+      ],
+      "evidence_class": "direct empirical bounded domains",
+      "quote_or_pointer": "State-machine workflows can outperform free-form loops on some structured long-horizon tasks.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E007",
+      "claim_id": "C007",
+      "source_ids": [
+        "S016",
+        "S024"
+      ],
+      "evidence_class": "direct counterevidence",
+      "quote_or_pointer": "More autonomy or more agents is not inherently better.",
+      "confidence": 4,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E008",
+      "claim_id": "C008",
+      "source_ids": [
+        "S012",
+        "S013",
+        "S014"
+      ],
+      "evidence_class": "direct empirical with domain limits",
+      "quote_or_pointer": "Working-memory management helps long-horizon tasks; long-term memory is task dependent.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E009",
+      "claim_id": "C009",
+      "source_ids": [
+        "S018",
+        "S019",
+        "S020"
+      ],
+      "evidence_class": "direct empirical",
+      "quote_or_pointer": "Reliability requires repeated-run and trajectory/end-state evaluation, not only single-output grading.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E010",
+      "claim_id": "C010",
+      "source_ids": [
+        "S021",
+        "S022",
+        "S023"
+      ],
+      "evidence_class": "security empirical",
+      "quote_or_pointer": "Execution-time trust boundaries are necessary for side-effectful agents; prompt-only defenses are insufficient.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E011",
+      "claim_id": "C011",
+      "source_ids": [
+        "S028",
+        "S029"
+      ],
+      "evidence_class": "security empirical",
+      "quote_or_pointer": "Skill provenance, permissions and security scanning are justified by observed skill supply-chain risks.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E012",
+      "claim_id": "C012",
+      "source_ids": [
+        "S006",
+        "S027"
+      ],
+      "evidence_class": "spec plus indirect empirical",
+      "quote_or_pointer": "Progressive disclosure is a current skill engineering standard and is indirectly supported by long-context degradation evidence.",
+      "confidence": 4,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E013",
+      "claim_id": "C013",
+      "source_ids": [
+        "S006",
+        "S007",
+        "S009"
+      ],
+      "evidence_class": "negative evidence / absence",
+      "quote_or_pointer": "The exact proposed manifest schema is not scientifically validated.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E014",
+      "claim_id": "C014",
+      "source_ids": [
+        "S001",
+        "S016",
+        "S018",
+        "S019"
+      ],
+      "evidence_class": "mixed empirical",
+      "quote_or_pointer": "Deterministic validators add high value where objective success criteria exist, but can miss semantically valid outcomes.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E015",
+      "claim_id": "C015",
+      "source_ids": [
+        "S007",
+        "S008",
+        "S009"
+      ],
+      "evidence_class": "engineering evidence",
+      "quote_or_pointer": "Protocols and typed contracts improve interoperability as engineering mechanisms, but do not guarantee cross-model behavioral equivalence.",
+      "confidence": 4,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    },
+    {
+      "evidence_id": "E016",
+      "claim_id": "C016",
+      "source_ids": [
+        "S018",
+        "S020",
+        "S011"
+      ],
+      "evidence_class": "methodological synthesis",
+      "quote_or_pointer": "Reproducibility for stochastic agents should be distributional and environment/version pinned rather than interpreted as identical text/trajectory.",
+      "confidence": 5,
+      "limitations": [
+        "Generalization is limited to the studied task/model/environment regimes; see source-specific limitations."
+      ]
+    }
+  ],
+  "tool_plan": {
+    "tool_call": [
+      {
+        "tool_name": "web search",
+        "purpose": "Find current primary research, counterevidence and official specifications",
+        "inputs_summary": "Independent search families for architecture, skills, routing, state/memory, evaluation, security and standardization",
+        "expected_output": "Source corpus with dated primary/official evidence",
+        "risk_level": "low",
+        "approval_required": false
+      },
+      {
+        "tool_name": "validate_analysis_report.py",
+        "purpose": "Validate mandatory report structure and internal source references",
+        "inputs_summary": "analysis_report.json",
+        "expected_output": "PASS/FAIL",
+        "risk_level": "low",
+        "approval_required": false
+      },
+      {
+        "tool_name": "check_sources_and_evidence.py",
+        "purpose": "Check source/evidence linkage",
+        "inputs_summary": "analysis_report.json",
+        "expected_output": "PASS/FAIL",
+        "risk_level": "low",
+        "approval_required": false
+      },
+      {
+        "tool_name": "validate_output_order.py",
+        "purpose": "Verify canonical output order",
+        "inputs_summary": "analysis_report.json",
+        "expected_output": "PASS/FAIL",
+        "risk_level": "low",
+        "approval_required": false
+      },
+      {
+        "tool_name": "validate_artifact_policy.py",
+        "purpose": "Verify artifact policy",
+        "inputs_summary": "analysis_report.json",
+        "expected_output": "PASS/FAIL",
+        "risk_level": "low",
+        "approval_required": false
+      }
+    ],
+    "no_tool_reason_if_applicable": null
+  },
+  "analysis": {
+    "public_reasoning_trace": "Evidence was grouped by architecture mechanism rather than by vendor framework. For each proposed invariant, supporting studies were checked against counterexamples and domain limits. Architecture was synthesized only after negative evidence had ruled out a maximally agentic universal design. The report exposes decisions and evidence links, not private chain-of-thought.",
+    "hypotheses": [
+      "H1: PARTIALLY_SUPPORTED",
+      "H2: PARTIALLY_SUPPORTED",
+      "H3: PARTIALLY_SUPPORTED",
+      "H4: SUPPORTED",
+      "H5: SUPPORTED",
+      "H6: PARTIALLY_SUPPORTED",
+      "H7: PARTIALLY_SUPPORTED",
+      "H8: PARTIALLY_SUPPORTED",
+      "H9: PARTIALLY_SUPPORTED",
+      "H10: SUPPORTED",
+      "H11: SUPPORTED",
+      "H12: PARTIALLY_SUPPORTED",
+      "H13: INSUFFICIENT_EVIDENCE",
+      "H14: SUPPORTED",
+      "H15: PARTIALLY_SUPPORTED"
+    ],
+    "counterarguments": [
+      "Agentless shows that sophisticated autonomous loops can be unnecessary for some high-value tasks.",
+      "SWE-Skills-Bench shows that skills may yield almost no marginal benefit and can hurt when stale/mismatched.",
+      "Multi-agent failure research shows coordination and termination introduce new failure surfaces.",
+      "AgentRewardBench shows both deterministic and LLM-based evaluators can be wrong.",
+      "Security benchmark defenses have environment assumptions; zero observed attacks in a bounded test is not a universal guarantee."
+    ],
+    "edge_cases": [
+      "Small read-only single-turn agents may collapse several planes into one implementation.",
+      "High-risk transactional agents may require stricter approval/audit layers than the base architecture.",
+      "Open-ended research agents may need flexible orchestration rather than rigid DAGs.",
+      "Large skill catalogs may need learned composition; this remains experimental in HDBA v0.1.",
+      "Persistent memory can create privacy/poisoning risks and should not be enabled merely because storage exists."
+    ]
+  },
+  "findings": [
+    {
+      "finding_id": "F001",
+      "domain": "architecture",
+      "severity": "high",
+      "claim": "The evidence does not justify a single maximally agentic universal harness. A minimal kernel with complexity-gated extensions is better supported.",
+      "evidence_ids": [
+        "E003",
+        "E006",
+        "E007",
+        "E008"
+      ],
+      "standard_mapping": [],
+      "impact": "Avoids unnecessary cost, latency and coordination failure.",
+      "recommendation": "Default to a single-agent/direct execution path; escalate to state-machine, graph, multi-skill or multi-agent modes only when task evidence demands them.",
+      "verification_status": "supported_with_boundary_conditions",
+      "sarif_result_ref": null
+    },
+    {
+      "finding_id": "F002",
+      "domain": "skills",
+      "severity": "high",
+      "claim": "Skills are useful but are not reliably beneficial merely by being present.",
+      "evidence_ids": [
+        "E003"
+      ],
+      "standard_mapping": [],
+      "impact": "Blind skill injection can waste tokens or reduce success.",
+      "recommendation": "Require task-level skill evals, context compatibility, versioning and negative controls.",
+      "verification_status": "supported",
+      "sarif_result_ref": null
+    },
+    {
+      "finding_id": "F003",
+      "domain": "routing",
+      "severity": "high",
+      "claim": "Routing/retrieval becomes a first-class subsystem as the capability catalog grows.",
+      "evidence_ids": [
+        "E004",
+        "E005"
+      ],
+      "standard_mapping": [],
+      "impact": "Flat exposure scales poorly and can reduce invocation precision.",
+      "recommendation": "Use progressive disclosure plus retriever/reranker and, for compositional tasks, dependency-aware planning.",
+      "verification_status": "supported",
+      "sarif_result_ref": null
+    },
+    {
+      "finding_id": "F004",
+      "domain": "state",
+      "severity": "medium",
+      "claim": "Run state is core; persistent semantic/episodic memory is not.",
+      "evidence_ids": [
+        "E006",
+        "E008"
+      ],
+      "standard_mapping": [],
+      "impact": "Prevents overbuilding memory systems for bounded tasks.",
+      "recommendation": "Separate execution/artifact/checkpoint state from optional long-term memory stores.",
+      "verification_status": "supported_with_boundary_conditions",
+      "sarif_result_ref": null
+    },
+    {
+      "finding_id": "F005",
+      "domain": "security",
+      "severity": "critical",
+      "claim": "Untrusted skills/retrieved content and side-effectful tools must not share the same authority as privileged harness policy.",
+      "evidence_ids": [
+        "E010",
+        "E011"
+      ],
+      "standard_mapping": [
+        "MCP-2026-07-28"
+      ],
+      "impact": "Reduces prompt-injection, supply-chain and unauthorized-action risk.",
+      "recommendation": "Enforce instruction hierarchy, provenance, capability permissions, sandboxing, approval gates and pre-execution authorization.",
+      "verification_status": "supported",
+      "sarif_result_ref": null
+    },
+    {
+      "finding_id": "F006",
+      "domain": "evaluation",
+      "severity": "high",
+      "claim": "Evaluation infrastructure is part of the harness architecture, not an afterthought.",
+      "evidence_ids": [
+        "E009",
+        "E014",
+        "E016"
+      ],
+      "standard_mapping": [],
+      "impact": "Without repeated, environment-grounded evaluation, reliability claims can be false green.",
+      "recommendation": "Ship regression suites, repeated-run metrics, trajectory traces, deterministic validators and semantic/human review where required.",
+      "verification_status": "supported",
+      "sarif_result_ref": null
+    },
+    {
+      "finding_id": "F007",
+      "domain": "standardization",
+      "severity": "medium",
+      "claim": "A Harness Preset Specification is justified as an engineering proposal, not yet as an empirically proven standard.",
+      "evidence_ids": [
+        "E013",
+        "E015"
+      ],
+      "standard_mapping": [
+        "AGENT-SKILLS",
+        "MCP-2026-07-28"
+      ],
+      "impact": "Prevents source laundering from vendor/spec adoption into scientific superiority claims.",
+      "recommendation": "Version HDBA v0.1, run cross-domain ablations and revise fields based on marginal value.",
+      "verification_status": "insufficient_direct_evidence_for_exact_schema",
+      "sarif_result_ref": null
+    }
+  ],
+  "verification": {
+    "claim_check": [
+      "C001-C016 are supported by explicit source mappings in evidence_ledger; representative primary sources include S001, S003, S010, S015, S018, S021 and S029.",
+      "Claims relying mainly on 2026 preprints are explicitly lower-confidence or emerging; examples S002, S004, S005, S022, S023 and S028.",
+      "The exact HDBA manifest and plane decomposition is a DESIGN PROPOSAL; S006, S007 and S009 establish current engineering mechanisms but do not validate the proposed schema as optimal."
+    ],
+    "source_check": [
+      "Peer-reviewed ACL/NAACL/EMNLP/ICLR/USENIX sources were preferred where available.",
+      "Official specifications are used only to establish current interfaces/practice, not scientific superiority.",
+      "Counterevidence includes Agentless, SWE-Skills-Bench and multi-agent failure studies."
+    ],
+    "consistency_check": "No architecture family is declared universally best. HDBA v0.1 uses complexity gates and task-class presets to reconcile mixed evidence.",
+    "schema_check": "PASS: validate_analysis_report.py and JSON Schema Draft 2020-12 validator.",
+    "artifact_check": "PASS: source/evidence, output-order and artifact-policy validators passed before release."
+  },
+  "bias_and_failure_modes": {
+    "bias_flags": [
+      "Novelty bias: 2026 Agent Skills literature is unusually preprint-heavy.",
+      "Benchmark-domain bias: many strong results come from coding, web navigation and tool-use tasks.",
+      "Vendor/specification authority bias: current standards can show interoperability practice but not superiority.",
+      "Architecture elegance bias: clean layer diagrams can overstate empirical support.",
+      "Survivorship/publication bias: positive agent interventions are more likely to be published than null deployments."
+    ],
+    "overconfidence_check": "Confidence is reduced where evidence is single-paper, preprint-only, domain-concentrated or lacks ablation. Exact manifest fields, universal plane boundaries and learned composition are not treated as settled science.",
+    "scope_drift_check": "The synthesis remains focused on repeatable harness construction and does not infer general AGI architecture claims.",
+    "prompt_injection_check": "Web and user-provided materials are treated as evidence/data. No retrieved instruction is permitted to override the research protocol or tool policy."
+  },
+  "synthesis": {
+    "final_answer": "A standardized reusable harness is justified as an engineering reference architecture only if it is minimal, contract-driven, evaluation-bound and complexity-gated. Evidence strongly supports explicit tool/capability interfaces, run state, routing for large catalogs, validation/evaluation, and trust boundaries. Evidence does not justify mandatory persistent memory, DAGs, multi-agent decomposition, learned skill composition or a fixed ten-layer stack for every domain. HDBA v0.1 therefore defines a small invariant control kernel plus versioned domain presets and optional extensions.",
+    "confidence": 4,
+    "confidence_reason_public": "Multiple independent peer-reviewed/primary sources support the key mechanisms and important counterexamples were found. Confidence is below 5 because the exact standardization schema and several 2026 skill-composition/security results remain preprint-heavy and lack broad replication.",
+    "decision": "release"
+  },
+  "artifact_policy": {
+    "always_emit": [
+      "analysis_report.md",
+      "analysis_report.json"
+    ],
+    "emit_when_code_analysis_detected": [
+      "code_findings.sarif.json"
+    ],
+    "code_analysis_detected": false,
+    "sarif_required": false,
+    "sarif_status": "not_required_no_code_findings",
+    "runtime_file_status": "files_created_in_runtime",
+    "claim_language": "standard_aligned_schema_validated_format_compatible_no_external_conformity_claim",
+    "output_selection_mode": "auto",
+    "user_requested_outputs": [
+      "deep research report per uploaded specification"
+    ],
+    "auto_selected_outputs": [
+      "analysis_report.md",
+      "analysis_report.json",
+      "analysis_report.html",
+      "evidence_ledger.jsonl",
+      "claim_matrix.csv",
+      "Evidence-Based_Harness_Design_Base_Architecture_v0.1.md",
+      "audit_pack.zip"
+    ],
+    "blocked_outputs": [],
+    "interactive_html_mode": "static self-contained report; no live model chat claimed",
+    "audit_pack_manifest": "audit_pack_manifest.json",
+    "runtime_capability_notes": [
+      "HTML rendering and deterministic validation are available locally.",
+      "No PDF was requested; PDF omitted to keep the artifact set focused."
+    ]
+  },
+  "optional_artifacts": [
+    {
+      "artifact_name": "analysis_report.html",
+      "format": "html",
+      "required_when": "complex technical architecture/evidence review",
+      "status": "created",
+      "validator": "render_interactive_html_report.py",
+      "reason": "Enables inspection/filtering of a large evidence set."
+    },
+    {
+      "artifact_name": "evidence_ledger.jsonl",
+      "format": "jsonl",
+      "required_when": "more than eight material claims or more than five sources",
+      "status": "created",
+      "validator": "JSON line parse check",
+      "reason": "Machine-readable claim-source evidence export."
+    },
+    {
+      "artifact_name": "claim_matrix.csv",
+      "format": "csv",
+      "required_when": "many disputed or quantitative claims",
+      "status": "created",
+      "validator": "CSV parse check",
+      "reason": "Compact evidence matrix for review."
+    },
+    {
+      "artifact_name": "Evidence-Based_Harness_Design_Base_Architecture_v0.1.md",
+      "format": "markdown",
+      "required_when": "architecture synthesis requested",
+      "status": "created",
+      "validator": null,
+      "reason": "Engineering handoff artifact containing the proposed standard."
+    },
+    {
+      "artifact_name": "audit_pack.zip",
+      "format": "zip",
+      "required_when": "three or more artifacts generated",
+      "status": "created",
+      "validator": "validate_audit_pack_manifest.py if compatible",
+      "reason": "Bundles canonical report and evidence exports."
+    }
+  ],
+  "adaptive_output_selection": {
+    "output_selection_mode": "auto",
+    "user_requested_outputs": [
+      "deep research based on attached 25-deliverable specification"
+    ],
+    "auto_selected_outputs": [
+      "markdown",
+      "json",
+      "html",
+      "evidence-data",
+      "architecture handoff",
+      "audit-pack"
+    ],
+    "blocked_outputs": [],
+    "interactive_html_mode": "static",
+    "audit_pack_manifest": "audit_pack_manifest.json",
+    "runtime_capability_notes": [
+      "No live Q&A is embedded in HTML.",
+      "No SARIF because this is not code analysis."
+    ]
+  },
+  "human_readable_summary": "The strongest evidence supports a minimal runtime kernel, explicit tool/skill contracts, scalable routing, run state, validation/evaluation and trust boundaries. The weakest parts are the exact manifest fields, universal layer boundaries, learned skill composition and universal multi-agent claims. HDBA v0.1 is therefore a falsifiable engineering reference, not a claim of settled scientific optimality.",
+  "open_questions": [
+    "What is the marginal value of each HDBA plane under controlled ablation across research, coding, support, data-analysis and computer-use tasks?",
+    "At what catalog size and ambiguity level does skill retrieval outperform exposing all skill metadata for each model family?",
+    "Do skill dependency graphs transfer across model providers, or are optimal graphs harness/model specific?",
+    "Can pre-execution authorization remain effective under adversarial metadata or compromised provenance channels?",
+    "Which memory policy gives the best task-success/privacy/poisoning trade-off by task class?",
+    "How stable are skill benefits over skill/version drift and changing tools?",
+    "Can a standardized preset compiler produce behaviorally equivalent harnesses across runtimes, or only structurally equivalent ones?",
+    "Which evaluator ensembles best predict human judgments without false-green bias on long trajectories?",
+    "What complexity threshold justifies supervisor-worker or multi-agent orchestration over a single-agent/state-machine baseline?",
+    "How should learned skill composition be evaluated against simple deterministic planners under distribution shift?"
+  ],
+  "ultrathink_craftsmanship_gate": {
+    "intent_match": "pass: directly addresses repeatable harness architecture, skills, composition, state, security, evaluation and standardization.",
+    "evidence_integrity": "pass_with_caveat: central claims have primary/peer-reviewed evidence; several 2026 skill results remain preprints.",
+    "logical_coherence": "pass: the architecture follows from evidence and counterevidence via complexity gating.",
+    "constraint_adherence": "pass: no private chain-of-thought, no invented sources, explicit insufficiency labels and source-class separation.",
+    "hallucination_scan": "pass_with_caveat: numerical claims are limited to verified source abstracts/pages; missing screened-source count is explicitly NOT_REPORTED.",
+    "portability_check": "pass_with_caveat: contracts are designed for portability, but behavioral equivalence across models is explicitly not claimed.",
+    "final_decision": "release"
+  }
+}

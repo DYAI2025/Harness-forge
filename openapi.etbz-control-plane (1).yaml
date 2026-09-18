@@ -1,0 +1,233 @@
+openapi: 3.1.0
+info:
+  title: ETBZ Runtime Control Plane
+  version: 0.2.0-design
+  description: >-
+    Least-privilege bridge for sanitized ETBZ VPS/FuFirE/Etsy/Hermes/approval evidence.
+    This API must not expose raw SSH, arbitrary shell execution or secret values.
+servers:
+  - url: https://YOUR_ETBZ_CONTROL_PLANE_HOST
+security:
+  - bearerAuth: []
+paths:
+  /v1/runtime/baseline:
+    get:
+      operationId: get_runtime_baseline
+      summary: Read sanitized ETBZ runtime baseline
+      responses:
+        '200':
+          description: Runtime baseline
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EvidencePacket'}
+  /v1/runtime/verify:
+    post:
+      operationId: run_runtime_verifier
+      summary: Run approved read-only ETBZ verifier suite
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scope:
+                  type: array
+                  items:
+                    enum: [os, containers, services, cron, nginx, project_files, scout_reports, fufire, etsy_status, hermes, telegram_gate]
+      responses:
+        '200':
+          description: Verification evidence
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EvidencePacket'}
+  /v1/fufire/contract:
+    get:
+      operationId: get_fufire_contract
+      summary: Read sanitized FuFirE health/build/OpenAPI metadata
+      responses:
+        '200':
+          description: FuFirE contract metadata
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EvidencePacket'}
+  /v1/fufire/smoke:
+    post:
+      operationId: run_fufire_smoke
+      summary: Run a pre-approved non-costly deterministic smoke test
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fixture_id]
+              properties:
+                fixture_id: {type: string, description: Pre-registered fixture identifier; no raw secret or private customer data}
+      responses:
+        '200':
+          description: Smoke evidence
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EvidencePacket'}
+  /v1/etsy/connection-status:
+    get:
+      operationId: get_etsy_connection_status
+      summary: Read sanitized Etsy app/OAuth/shop binding status
+      responses:
+        '200':
+          description: Etsy connection status with no token values
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EvidencePacket'}
+  /v1/hermes/jobs:
+    post:
+      operationId: submit_hermes_job
+      summary: Submit a bounded policy-validated Hermes job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/HermesJobRequest'}
+      responses:
+        '202':
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, status]
+                properties:
+                  job_id: {type: string}
+                  status: {enum: [accepted, blocked]}
+                  reason: {type: [string, 'null']}
+  /v1/hermes/jobs/{job_id}:
+    get:
+      operationId: get_hermes_job
+      summary: Read sanitized Hermes result and evidence candidates
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Hermes job result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/HermesJobResult'}
+  /v1/approvals/requests:
+    post:
+      operationId: request_human_approval
+      summary: Create a human approval request; never self-approves
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action_type, summary, evidence_refs]
+              properties:
+                action_type: {type: string}
+                summary: {type: string}
+                evidence_refs: {type: array, items: {type: string}}
+      responses:
+        '202':
+          description: Approval request created
+  /v1/approvals/{approval_id}:
+    get:
+      operationId: get_human_approval
+      summary: Read approval status from the project-approved human gate
+      parameters:
+        - in: path
+          name: approval_id
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Approval state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [approval_id, status]
+                properties:
+                  approval_id: {type: string}
+                  status: {enum: [pending, approved, rejected, expired]}
+                  approved_by: {type: [string, 'null']}
+                  approved_at: {type: [string, 'null'], format: date-time}
+  /v1/evidence:
+    post:
+      operationId: append_runtime_evidence
+      summary: Persist a sanitized evidence entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EvidenceEntry'}
+      responses:
+        '201':
+          description: Evidence recorded
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    EvidenceEntry:
+      type: object
+      required: [domain, claim, classification, evidence_class, source]
+      properties:
+        domain: {type: string}
+        claim: {type: string}
+        classification: {type: string}
+        evidence_class: {type: string}
+        source: {type: string}
+        exact_state_id: {type: [string, 'null']}
+        notes: {type: [string, 'null']}
+    EvidencePacket:
+      type: object
+      required: [observed_at, classification, evidence_class, observations]
+      properties:
+        observed_at: {type: string, format: date-time}
+        classification: {type: string}
+        evidence_class: {type: string}
+        exact_state_id: {type: [string, 'null']}
+        observations:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        warnings:
+          type: array
+          items: {type: string}
+    HermesJobRequest:
+      type: object
+      required: [goal, in_scope, out_of_scope, mutation_rights, secrets_policy, tests, stop_conditions, evidence_to_return]
+      properties:
+        verified_inputs: {type: array, items: {type: string}}
+        read_only_discovery: {type: array, items: {type: string}}
+        goal: {type: string}
+        in_scope: {type: array, items: {type: string}}
+        out_of_scope: {type: array, items: {type: string}}
+        mutation_rights: {type: string}
+        secrets_policy: {type: string}
+        tests: {type: array, items: {type: string}}
+        rollback: {type: array, items: {type: string}}
+        stop_conditions: {type: array, items: {type: string}}
+        evidence_to_return: {type: array, items: {type: string}}
+        human_approval_id: {type: [string, 'null']}
+    HermesJobResult:
+      type: object
+      required: [job_id, status, classification, evidence_candidates]
+      properties:
+        job_id: {type: string}
+        status: {enum: [accepted, running, succeeded, failed, blocked]}
+        classification: {enum: [AGENT_REPORTED]}
+        summary: {type: string}
+        evidence_candidates:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        warnings: {type: array, items: {type: string}}

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>deep-reasoning-analysis-enterprise</title><style>
+:root { --navy:#052f46; --ink:#17202a; --muted:#64748b; --line:#d9e2ec; --soft:#f5f8fb; }
+* { box-sizing:border-box; } body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); background:#fff; }
+header { background:linear-gradient(135deg,var(--navy),#071827); color:#fff; padding:34px 44px; }
+header h1 { margin:0 0 8px; font-size:30px; letter-spacing:-.02em; } header p { margin:0; color:#cbd5e1; }
+main { max-width:1240px; margin:0 auto; padding:28px 36px 60px; }
+.metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-top:-26px; }
+.metric { background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px; box-shadow:0 14px 28px rgba(5,47,70,.08); }
+.metric strong { display:block; font-size:28px; color:var(--navy); } .metric span { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+.toolbar { position:sticky; top:0; background:rgba(255,255,255,.96); backdrop-filter: blur(8px); z-index:10; display:flex; gap:10px; padding:16px 0; border-bottom:1px solid var(--line); margin-bottom:20px; }
+input, select { border:1px solid var(--line); border-radius:10px; padding:10px 12px; font:inherit; } input { flex:1; }
+section { margin:28px 0; } h2 { color:var(--navy); border-bottom:2px solid var(--navy); padding-bottom:8px; }
+.card { border:1px solid var(--line); border-left:4px solid var(--navy); background:var(--soft); border-radius:12px; padding:16px; margin:12px 0; }
+table { width:100%; border-collapse:collapse; font-size:14px; } th { background:var(--navy); color:#fff; text-align:left; padding:10px; } td { border-bottom:1px solid var(--line); padding:10px; vertical-align:top; }
+.badge { display:inline-block; border-radius:999px; padding:4px 8px; background:#e0f2fe; color:#075985; font-size:12px; } .muted { color:var(--muted); }
+.hidden { display:none !important; } details summary { cursor:pointer; }
+@media (max-width:820px) { .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } main { padding:20px; } header { padding:28px 24px; } }
+</style></head>
+<body><header><h1>deep-reasoning-analysis-enterprise</h1><p>Run HDBA-2026-09-18-001 - Artifact HDBA-v0.1-research-pack - static_interactive</p></header>
+<main><div class="metrics"><div class="metric"><strong>7</strong><span>Findings</span></div><div class="metric"><strong>16</strong><span>Evidence Items</span></div><div class="metric"><strong>33</strong><span>Sources</span></div><div class="metric"><strong>release</strong><span>Decision</span></div></div>
+<div class="toolbar"><input id="q" placeholder="Search claims, sources, evidence, findings"><select id="severity"><option value="">All severities</option><option value="critical">critical (1)</option><option value="high">high (4)</option><option value="medium">medium (2)</option></select></div>
+<section class="card"><h2>Executive Decision</h2><p><span class="badge">release</span></p><p>A standardized reusable harness is justified as an engineering reference architecture only if it is minimal, contract-driven, evaluation-bound and complexity-gated. Evidence strongly supports explicit tool/capability interfaces, run state, routing for large catalogs, validation/evaluation, and trust boundaries. Evidence does not justify mandatory persistent memory, DAGs, multi-agent decomposition, learned skill composition or a fixed ten-layer stack for every domain. HDBA v0.1 therefore defines a small invariant control kernel plus versioned domain presets and optional extensions.</p><p class="muted">Confidence: 4 - Multiple independent peer-reviewed/primary sources support the key mechanisms and important counterexamples were found. Confidence is below 5 because the exact standardization schema and several 2026 skill-composition/security results remain preprint-heavy and lack broad replication.</p></section>
+<section><h2>Findings Matrix</h2><div data-search="findings matrix"><table><thead><tr><th>id</th><th>severity</th><th>domain</th><th>claim</th><th>status</th></tr></thead><tbody><tr data-search="{&quot;id&quot;: &quot;F001&quot;, &quot;severity&quot;: &quot;high&quot;, &quot;domain&quot;: &quot;architecture&quot;, &quot;claim&quot;: &quot;The evidence does not justify a single maximally agentic universal harness. A minimal kernel with complexity-gated extensions is better supported.&quot;, &quot;status&quot;: &quot;supported_with_boundary_conditions&quot;}"><td>F001</td><td>high</td><td>architecture</td><td>The evidence does not justify a single maximally agentic universal harness. A minimal kernel with complexity-gated extensions is better supported.</td><td>supported_with_boundary_conditions</td></tr><tr data-search="{&quot;id&quot;: &quot;F002&quot;, &quot;severity&quot;: &quot;high&quot;, &quot;domain&quot;: &quot;skills&quot;, &quot;claim&quot;: &quot;Skills are useful but are not reliably beneficial merely by being present.&quot;, &quot;status&quot;: &quot;supported&quot;}"><td>F002</td><td>high</td><td>skills</td><td>Skills are useful but are not reliably beneficial merely by being present.</td><td>supported</td></tr><tr data-search="{&quot;id&quot;: &quot;F003&quot;, &quot;severity&quot;: &quot;high&quot;, &quot;domain&quot;: &quot;routing&quot;, &quot;claim&quot;: &quot;Routing/retrieval becomes a first-class subsystem as the capability catalog grows.&quot;, &quot;status&quot;: &quot;supported&quot;}"><td>F003</td><td>high</td><td>routing</td><td>Routing/retrieval becomes a first-class subsystem as the capability catalog grows.</td><td>supported</td></tr><tr data-search="{&quot;id&quot;: &quot;F004&quot;, &quot;severity&quot;: &quot;medium&quot;, &quot;domain&quot;: &quot;state&quot;, &quot;claim&quot;: &quot;Run state is core; persistent semantic/episodic memory is not.&quot;, &quot;status&quot;: &quot;supported_with_boundary_conditions&quot;}"><td>F004</td><td>medium</td><td>state</td><td>Run state is core; persistent semantic/episodic memory is not.</td><td>supported_with_boundary_conditions</td></tr><tr data-search="{&quot;id&quot;: &quot;F005&quot;, &quot;severity&quot;: &quot;critical&quot;, &quot;domain&quot;: &quot;security&quot;, &quot;claim&quot;: &quot;Untrusted skills/retrieved content and side-effectful tools must not share the same authority as privileged harness policy.&quot;, &quot;status&quot;: &quot;supported&quot;}"><td>F005</td><td>critical</td><td>security</td><td>Untrusted skills/retrieved content and side-effectful tools must not share the same authority as privileged harness policy.</td><td>supported</td></tr><tr data-search="{&quot;id&quot;: &quot;F006&quot;, &quot;severity&quot;: &quot;high&quot;, &quot;domain&quot;: &quot;evaluation&quot;, &quot;claim&quot;: &quot;Evaluation infrastructure is part of the harness architecture, not an afterthought.&quot;, &quot;status&quot;: &quot;supported&quot;}"><td>F006</td><td>high</td><td>evaluation</td><td>Evaluation infrastructure is part of the harness architecture, not an afterthought.</td><td>supported</td></tr><tr data-search="{&quot;id&quot;: &quot;F007&quot;, &quot;severity&quot;: &quot;medium&quot;, &quot;domain&quot;: &quot;standardization&quot;, &quot;claim&quot;: &quot;A Harness Preset Specification is justified as an engineering proposal, not yet as an empirically proven standard.&quot;, &quot;status&quot;: &quot;insufficient_direct_evidence_for_exact_schema&quot;}"><td>F007</td><td>medium</td><td>standardization</td><td>A Harness Preset Specification is justified as an engineering proposal, not yet as an empirically proven standard.</td><td>insufficient_direct_evidence_for_exact_schema</td></tr></tbody></table></div></section>
+<section><h2>Evidence Ledger</h2>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E001&quot;, &quot;claim_id&quot;: &quot;C001&quot;, &quot;source_ids&quot;: [&quot;S007&quot;, &quot;S009&quot;, &quot;S020&quot;], &quot;evidence_class&quot;: &quot;engineering synthesis&quot;, &quot;quote_or_pointer&quot;: &quot;No canonical academic definition of agent harness exists; use an operational definition that includes runtime/control around model interaction.&quot;, &quot;confidence&quot;: 4, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E001</strong> - Claim C001 - Confidence 4</summary>
+          <p><strong>Class:</strong> engineering synthesis</p>
+          <p><strong>Source IDs:</strong> S007, S009, S020</p>
+          <p><strong>Pointer:</strong> No canonical academic definition of agent harness exists; use an operational definition that includes runtime/control around model interaction.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E002&quot;, &quot;claim_id&quot;: &quot;C002&quot;, &quot;source_ids&quot;: [&quot;S010&quot;, &quot;S011&quot;, &quot;S017&quot;], &quot;evidence_class&quot;: &quot;direct empirical&quot;, &quot;quote_or_pointer&quot;: &quot;Agent-computer/tool interface design materially affects task success.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E002</strong> - Claim C002 - Confidence 5</summary>
+          <p><strong>Class:</strong> direct empirical</p>
+          <p><strong>Source IDs:</strong> S010, S011, S017</p>
+          <p><strong>Pointer:</strong> Agent-computer/tool interface design materially affects task success.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E003&quot;, &quot;claim_id&quot;: &quot;C003&quot;, &quot;source_ids&quot;: [&quot;S001&quot;, &quot;S003&quot;], &quot;evidence_class&quot;: &quot;direct empirical&quot;, &quot;quote_or_pointer&quot;: &quot;Skills can improve task performance but have heterogeneous and sometimes negative marginal utility.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E003</strong> - Claim C003 - Confidence 5</summary>
+          <p><strong>Class:</strong> direct empirical</p>
+          <p><strong>Source IDs:</strong> S001, S003</p>
+          <p><strong>Pointer:</strong> Skills can improve task performance but have heterogeneous and sometimes negative marginal utility.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E004&quot;, &quot;claim_id&quot;: &quot;C004&quot;, &quot;source_ids&quot;: [&quot;S002&quot;, &quot;S026&quot;, &quot;S027&quot;], &quot;evidence_class&quot;: &quot;direct empirical&quot;, &quot;quote_or_pointer&quot;: &quot;Large tool/skill catalogs create retrieval and context bottlenecks.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E004</strong> - Claim C004 - Confidence 5</summary>
+          <p><strong>Class:</strong> direct empirical</p>
+          <p><strong>Source IDs:</strong> S002, S026, S027</p>
+          <p><strong>Pointer:</strong> Large tool/skill catalogs create retrieval and context bottlenecks.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E005&quot;, &quot;claim_id&quot;: &quot;C005&quot;, &quot;source_ids&quot;: [&quot;S004&quot;, &quot;S005&quot;, &quot;S010&quot;], &quot;evidence_class&quot;: &quot;emerging empirical&quot;, &quot;quote_or_pointer&quot;: &quot;Complex multi-skill tasks require more than independent relevance ranking; order/decomposition/dependencies matter.&quot;, &quot;confidence&quot;: 4, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E005</strong> - Claim C005 - Confidence 4</summary>
+          <p><strong>Class:</strong> emerging empirical</p>
+          <p><strong>Source IDs:</strong> S004, S005, S010</p>
+          <p><strong>Pointer:</strong> Complex multi-skill tasks require more than independent relevance ranking; order/decomposition/dependencies matter.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E006&quot;, &quot;claim_id&quot;: &quot;C006&quot;, &quot;source_ids&quot;: [&quot;S015&quot;], &quot;evidence_class&quot;: &quot;direct empirical bounded domains&quot;, &quot;quote_or_pointer&quot;: &quot;State-machine workflows can outperform free-form loops on some structured long-horizon tasks.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E006</strong> - Claim C006 - Confidence 5</summary>
+          <p><strong>Class:</strong> direct empirical bounded domains</p>
+          <p><strong>Source IDs:</strong> S015</p>
+          <p><strong>Pointer:</strong> State-machine workflows can outperform free-form loops on some structured long-horizon tasks.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E007&quot;, &quot;claim_id&quot;: &quot;C007&quot;, &quot;source_ids&quot;: [&quot;S016&quot;, &quot;S024&quot;], &quot;evidence_class&quot;: &quot;direct counterevidence&quot;, &quot;quote_or_pointer&quot;: &quot;More autonomy or more agents is not inherently better.&quot;, &quot;confidence&quot;: 4, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E007</strong> - Claim C007 - Confidence 4</summary>
+          <p><strong>Class:</strong> direct counterevidence</p>
+          <p><strong>Source IDs:</strong> S016, S024</p>
+          <p><strong>Pointer:</strong> More autonomy or more agents is not inherently better.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E008&quot;, &quot;claim_id&quot;: &quot;C008&quot;, &quot;source_ids&quot;: [&quot;S012&quot;, &quot;S013&quot;, &quot;S014&quot;], &quot;evidence_class&quot;: &quot;direct empirical with domain limits&quot;, &quot;quote_or_pointer&quot;: &quot;Working-memory management helps long-horizon tasks; long-term memory is task dependent.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E008</strong> - Claim C008 - Confidence 5</summary>
+          <p><strong>Class:</strong> direct empirical with domain limits</p>
+          <p><strong>Source IDs:</strong> S012, S013, S014</p>
+          <p><strong>Pointer:</strong> Working-memory management helps long-horizon tasks; long-term memory is task dependent.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E009&quot;, &quot;claim_id&quot;: &quot;C009&quot;, &quot;source_ids&quot;: [&quot;S018&quot;, &quot;S019&quot;, &quot;S020&quot;], &quot;evidence_class&quot;: &quot;direct empirical&quot;, &quot;quote_or_pointer&quot;: &quot;Reliability requires repeated-run and trajectory/end-state evaluation, not only single-output grading.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E009</strong> - Claim C009 - Confidence 5</summary>
+          <p><strong>Class:</strong> direct empirical</p>
+          <p><strong>Source IDs:</strong> S018, S019, S020</p>
+          <p><strong>Pointer:</strong> Reliability requires repeated-run and trajectory/end-state evaluation, not only single-output grading.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E010&quot;, &quot;claim_id&quot;: &quot;C010&quot;, &quot;source_ids&quot;: [&quot;S021&quot;, &quot;S022&quot;, &quot;S023&quot;], &quot;evidence_class&quot;: &quot;security empirical&quot;, &quot;quote_or_pointer&quot;: &quot;Execution-time trust boundaries are necessary for side-effectful agents; prompt-only defenses are insufficient.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E010</strong> - Claim C010 - Confidence 5</summary>
+          <p><strong>Class:</strong> security empirical</p>
+          <p><strong>Source IDs:</strong> S021, S022, S023</p>
+          <p><strong>Pointer:</strong> Execution-time trust boundaries are necessary for side-effectful agents; prompt-only defenses are insufficient.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E011&quot;, &quot;claim_id&quot;: &quot;C011&quot;, &quot;source_ids&quot;: [&quot;S028&quot;, &quot;S029&quot;], &quot;evidence_class&quot;: &quot;security empirical&quot;, &quot;quote_or_pointer&quot;: &quot;Skill provenance, permissions and security scanning are justified by observed skill supply-chain risks.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E011</strong> - Claim C011 - Confidence 5</summary>
+          <p><strong>Class:</strong> security empirical</p>
+          <p><strong>Source IDs:</strong> S028, S029</p>
+          <p><strong>Pointer:</strong> Skill provenance, permissions and security scanning are justified by observed skill supply-chain risks.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E012&quot;, &quot;claim_id&quot;: &quot;C012&quot;, &quot;source_ids&quot;: [&quot;S006&quot;, &quot;S027&quot;], &quot;evidence_class&quot;: &quot;spec plus indirect empirical&quot;, &quot;quote_or_pointer&quot;: &quot;Progressive disclosure is a current skill engineering standard and is indirectly supported by long-context degradation evidence.&quot;, &quot;confidence&quot;: 4, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E012</strong> - Claim C012 - Confidence 4</summary>
+          <p><strong>Class:</strong> spec plus indirect empirical</p>
+          <p><strong>Source IDs:</strong> S006, S027</p>
+          <p><strong>Pointer:</strong> Progressive disclosure is a current skill engineering standard and is indirectly supported by long-context degradation evidence.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E013&quot;, &quot;claim_id&quot;: &quot;C013&quot;, &quot;source_ids&quot;: [&quot;S006&quot;, &quot;S007&quot;, &quot;S009&quot;], &quot;evidence_class&quot;: &quot;negative evidence / absence&quot;, &quot;quote_or_pointer&quot;: &quot;The exact proposed manifest schema is not scientifically validated.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E013</strong> - Claim C013 - Confidence 5</summary>
+          <p><strong>Class:</strong> negative evidence / absence</p>
+          <p><strong>Source IDs:</strong> S006, S007, S009</p>
+          <p><strong>Pointer:</strong> The exact proposed manifest schema is not scientifically validated.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E014&quot;, &quot;claim_id&quot;: &quot;C014&quot;, &quot;source_ids&quot;: [&quot;S001&quot;, &quot;S016&quot;, &quot;S018&quot;, &quot;S019&quot;], &quot;evidence_class&quot;: &quot;mixed empirical&quot;, &quot;quote_or_pointer&quot;: &quot;Deterministic validators add high value where objective success criteria exist, but can miss semantically valid outcomes.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E014</strong> - Claim C014 - Confidence 5</summary>
+          <p><strong>Class:</strong> mixed empirical</p>
+          <p><strong>Source IDs:</strong> S001, S016, S018, S019</p>
+          <p><strong>Pointer:</strong> Deterministic validators add high value where objective success criteria exist, but can miss semantically valid outcomes.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E015&quot;, &quot;claim_id&quot;: &quot;C015&quot;, &quot;source_ids&quot;: [&quot;S007&quot;, &quot;S008&quot;, &quot;S009&quot;], &quot;evidence_class&quot;: &quot;engineering evidence&quot;, &quot;quote_or_pointer&quot;: &quot;Protocols and typed contracts improve interoperability as engineering mechanisms, but do not guarantee cross-model behavioral equivalence.&quot;, &quot;confidence&quot;: 4, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E015</strong> - Claim C015 - Confidence 4</summary>
+          <p><strong>Class:</strong> engineering evidence</p>
+          <p><strong>Source IDs:</strong> S007, S008, S009</p>
+          <p><strong>Pointer:</strong> Protocols and typed contracts improve interoperability as engineering mechanisms, but do not guarantee cross-model behavioral equivalence.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details>
+        <details class="card evidence-card" data-search="{&quot;evidence_id&quot;: &quot;E016&quot;, &quot;claim_id&quot;: &quot;C016&quot;, &quot;source_ids&quot;: [&quot;S018&quot;, &quot;S020&quot;, &quot;S011&quot;], &quot;evidence_class&quot;: &quot;methodological synthesis&quot;, &quot;quote_or_pointer&quot;: &quot;Reproducibility for stochastic agents should be distributional and environment/version pinned rather than interpreted as identical text/trajectory.&quot;, &quot;confidence&quot;: 5, &quot;limitations&quot;: [&quot;Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.&quot;]}">
+          <summary><strong>E016</strong> - Claim C016 - Confidence 5</summary>
+          <p><strong>Class:</strong> methodological synthesis</p>
+          <p><strong>Source IDs:</strong> S018, S020, S011</p>
+          <p><strong>Pointer:</strong> Reproducibility for stochastic agents should be distributional and environment/version pinned rather than interpreted as identical text/trajectory.</p>
+          <p><strong>Limitations:</strong> Generalization is limited to the studied task/model/environment regimes; see source-specific limitations.</p>
+        </details></section>
+<section><h2>Review Notes</h2><p>This file is static_interactive. It supports local filtering and evidence navigation only. It does not send data to external services and does not provide live AI chat.</p></section>
+</main><script>
+const q = document.getElementById('q');
+const severity = document.getElementById('severity');
+function normalize(s){ return (s || '').toString().toLowerCase(); }
+function applyFilters(){
+  const term = normalize(q.value);
+  const sev = severity.value;
+  document.querySelectorAll('[data-search]').forEach(el => {
+    const hay = normalize(el.getAttribute('data-search'));
+    const sevOk = !sev || hay.includes('"severity": "' + sev + '"') || hay.includes(sev);
+    const termOk = !term || hay.includes(term);
+    el.classList.toggle('hidden', !(sevOk && termOk));
+  });
+}
+q.addEventListener('input', applyFilters); severity.addEventListener('change', applyFilters);
+</script></body></html>
